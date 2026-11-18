@@ -203,6 +203,93 @@ app.post("/api/v1/profiles/:profileId/presence", async (request, reply) => {
   return result.rows[0];
 });
 
+
+async function requireAdmin(request: FastifyRequest, reply: import("fastify").FastifyReply) {
+  const session = await getSession(request);
+  if (!session) {
+    reply.code(401).send({ error: "unauthenticated" });
+    return null;
+  }
+  const role = await db.query(
+    "SELECT role_id FROM user_roles WHERE user_id=$1 AND role_id IN ($2,$3) LIMIT 1",
+    [session.user_id, "super_admin", "admin"]
+  );
+  if (!role.rowCount) {
+    reply.code(403).send({ error: "forbidden" });
+    return null;
+  }
+  return session;
+}
+
+const catalogImportSchema = z.object({
+  items: z.array(z.object({
+    type: z.enum(["movie", "tv"]),
+    title: z.string().trim().min(1).max(240),
+    synopsis: z.string().max(10000).optional(),
+    year: z.number().int().min(1888).max(2100).optional(),
+    posterUrl: z.string().url().max(2048).optional(),
+    tmdbId: z.number().int().positive().optional()
+  })).min(1).max(100)
+});
+
+app.get("/api/v1/catalog", async (request, reply) => {
+  const parsed = z.object({
+    type: z.enum(["movie", "tv"]).optional(),
+    q: z.string().trim().max(120).optional()
+  }).safeParse(request.query);
+  if (!parsed.success) return reply.code(400).send({ error: "invalid_query" });
+  const result = await db.query(
+    "SELECT id,content_type,title,synopsis,release_year,poster_url FROM catalog_items WHERE publication_status='published' AND rights_status='verified' AND (rights_expires_at IS NULL OR rights_expires_at > now()) AND ($1::text IS NULL OR content_type=$1) AND ($2::text IS NULL OR title ILIKE '%' || $2 || '%') ORDER BY published_at DESC NULLS LAST, title ASC LIMIT 100",
+    [parsed.data.type ?? null, parsed.data.q ?? null]
+  );
+  return { items: result.rows };
+});
+
+app.get("/api/v1/admin/catalog", async (request, reply) => {
+  const session = await requireAdmin(request, reply);
+  if (!session) return;
+  const result = await db.query(
+    "SELECT id,content_type,title,synopsis,release_year,poster_url,tmdb_id,publication_status,rights_status,rights_reference,rights_expires_at,created_at,updated_at FROM catalog_items ORDER BY updated_at DESC LIMIT 500"
+  );
+  return { items: result.rows };
+});
+
+app.post("/api/v1/admin/catalog/import", async (request, reply) => {
+  const session = await requireAdmin(request, reply);
+  if (!session) return;
+  const parsed = catalogImportSchema.safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: "invalid_import", details: parsed.error.flatten() });
+  const client = await db.connect();
+  const importedIds: string[] = [];
+  try {
+    await client.query("BEGIN");
+    for (const item of parsed.data.items) {
+      const values = [randomUUID(), item.type, item.title, item.synopsis ?? null, item.year ?? null, item.posterUrl ?? null, item.tmdbId ?? null, session.user_id];
+      const result = item.tmdbId
+        ? await client.query(
+            "INSERT INTO catalog_items(id,content_type,title,synopsis,release_year,poster_url,tmdb_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (tmdb_id) WHERE tmdb_id IS NOT NULL DO UPDATE SET content_type=EXCLUDED.content_type,title=EXCLUDED.title,synopsis=EXCLUDED.synopsis,release_year=EXCLUDED.release_year,poster_url=EXCLUDED.poster_url,updated_at=now() RETURNING id",
+            values
+          )
+        : await client.query(
+            "INSERT INTO catalog_items(id,content_type,title,synopsis,release_year,poster_url,created_by) VALUES($1,$2,$3,$4,$5,$6,$8) RETURNING id",
+            values
+          );
+      importedIds.push(result.rows[0].id);
+    }
+    await client.query(
+      "INSERT INTO audit_logs(id,actor_user_id,action,target_type,target_id,metadata) VALUES($1,$2,$3,$4,$5,$6::jsonb)",
+      [randomUUID(), session.user_id, "admin.catalog.imported", "catalog_batch", null, JSON.stringify({ count: importedIds.length })]
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return reply.code(201).send({ imported: importedIds.length, ids: importedIds, publicationStatus: "draft", rightsStatus: "pending" });
+});
+
 app.get("/api/v1/admin/overview", async (request, reply) => {
   const session = await getSession(request);
   if (!session) return reply.code(401).send({ error: "unauthenticated" });
