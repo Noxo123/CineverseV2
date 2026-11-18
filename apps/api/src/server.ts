@@ -251,7 +251,7 @@ async function getCatalogIframeColumn() {
 function extractIframeUrl(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const raw = value.trim();
-  const match = raw.match(/<iframe\\b[^>]*\\bsrc\\s*=\\s*["']([^"']+)["']/i);
+  const match = raw.match(/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
   const candidate = match?.[1] ?? raw;
   try {
     const url = new URL(candidate);
