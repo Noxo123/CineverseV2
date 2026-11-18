@@ -107,6 +107,7 @@ export async function migrate() {
         throw error;
       }
     }
+    if (superAdminEmails.length) await client.query("INSERT INTO user_roles(user_id,role_id) SELECT id,$2 FROM users WHERE lower(email)=ANY($1::text[]) ON CONFLICT DO NOTHING", [superAdminEmails, "super_admin"]);
   } finally {
     await client.query("SELECT pg_advisory_unlock(72819402)");
     client.release();
