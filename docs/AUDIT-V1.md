@@ -212,3 +212,26 @@ Le workflow V1 installe avec npm install. Pour une CI reproductible, V2 utiliser
 6. Les migrations doivent être versionnées, testées sur copie, sauvegardées et réversibles par procédure documentée.
 
 **Statut inchangé : phase 1 toujours ouverte.** Les parcours frontend, l'inventaire exhaustif des routes, la couverture de tests, l'historique Git/secrets et les procédures de sauvegarde/restauration restent à terminer.
+
+
+### 9.7 Tests, sauvegardes et maturité opérationnelle
+
+- L'arborescence V1 contient un fichier de tests Vitest principal (`tests/shared.test.ts`) et un script dédié de vérification de restauration SQLite.
+- Les tests consultés couvrent surtout les schémas partagés, les URL média et le chargement du SDK Discord. Ils ne démontrent pas une couverture d'intégration des routes, des sessions, du RBAC, des paiements, des frontières multi-serveurs, des migrations ou des parcours de lecture.
+- Le script de sauvegarde ouvre la sauvegarde en lecture seule, exécute `PRAGMA integrity_check`, crée une copie temporaire via l'API SQLite Backup et vérifie l'inventaire des tables. C'est un bon contrôle non destructif ; aucune exécution réussie sur une sauvegarde de production n'a été vérifiée pendant cet audit.
+- La documentation V1 décrit une sauvegarde automatique avec rétention locale de 7 jours et recommande une copie hors VPS. La présence du code et de la documentation ne prouve pas qu'une copie externe ni qu'une restauration périodique sont effectivement configurées.
+
+### 9.8 Écarts supplémentaires de configuration
+
+- Le code API construit le callback Discord à partir de `WEB_ORIGIN` et du chemin `/api/v1/auth/discord/callback`. La variable `DISCORD_REDIRECT_URI` présente dans le fichier d'exemple et dans la configuration fournie n'est pas consommée par le code consulté. Il faut donc éviter de croire qu'une modification de cette variable change réellement le callback utilisé.
+- La variable `SESSION_SECRET` apparaît dans le fichier d'exemple, mais aucune lecture de `process.env.SESSION_SECRET` n'a été trouvée dans la recherche ciblée. Les sessions observées sont des jetons opaques générés côté serveur et stockés sous forme de hash. Cette variable semble donc inutilisée dans le code examiné ; V2 ne conservera pas de variable morte et documentera précisément son mécanisme de session.
+- La recherche ciblée n'a pas permis d'identifier un endpoint de webhook Stripe entrant. Le cycle de paiement et la confirmation d'abonnement doivent être audités plus profondément avant toute reprise de la monétisation ; V2 devra privilégier des webhooks signés, idempotents et vérifiés côté serveur.
+
+### 9.9 Périmètre de l'audit restant
+
+L'inspection complémentaire a renforcé les constats sur les migrations, le RBAC, le bot, les limites de débit, les tests et la configuration. Elle ne remplace toujours pas :
+- la lecture exhaustive des 132 routes détectées, y compris chaque mutation et contrôle d'accès ;
+- la vérification de tous les formulaires, pages et appels API frontend ;
+- l'examen de l'historique Git complet et des fichiers supprimés pour détecter d'anciens secrets ou exports ;
+- la vérification des paramètres réels de sauvegarde hors VPS et la répétition d'une restauration sur environnement isolé ;
+- les tests d'intégration et de charge sur une copie isolée.
