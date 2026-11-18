@@ -36,3 +36,6 @@ temp/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local application media and uploaded files
+storage/
