@@ -6,7 +6,7 @@ Ce document distingue les connecteurs réellement implémentés des fournisseurs
 
 - Le stockage est local au serveur qui exécute l'API. Aucun service S3, R2 ou CDN n'est requis.
 - Variable : `LOCAL_STORAGE_DIR=./storage`. Le chemin relatif est résolu depuis le répertoire de lancement du processus Node ; un chemin absolu est également accepté.
-- Le dossier est créé automatiquement lors du contrôle des intégrations par l'administration. Le processus API doit disposer des droits de lecture/écriture.
+- Le dossier est créé automatiquement au démarrage de l'API et vérifié depuis le panneau d'administration. Le contrôle confirme les droits de lecture et d'écriture. Le processus API doit disposer des droits de lecture/écriture.
 - Le dossier de stockage ne doit pas être exposé directement par le serveur web. Les fichiers privés devront être servis par des routes API contrôlées.
 - Les sauvegardes du dossier doivent être incluses dans la stratégie de sauvegarde du serveur.
 
