@@ -130,6 +130,38 @@ export async function migrate() {
         throw error;
       }
     }
+    const versionFour = await client.query("SELECT version FROM schema_migrations WHERE version = 4");
+    if (versionFour.rowCount === 0) {
+      await client.query("BEGIN");
+      try {
+        await client.query(`
+          CREATE TABLE catalog_items (
+            id uuid PRIMARY KEY,
+            content_type text NOT NULL CHECK (content_type IN ('movie','tv')),
+            title varchar(240) NOT NULL,
+            synopsis text,
+            release_year integer CHECK (release_year BETWEEN 1888 AND 2100),
+            poster_url text,
+            tmdb_id integer,
+            publication_status text NOT NULL DEFAULT 'draft' CHECK (publication_status IN ('draft','published','archived')),
+            rights_status text NOT NULL DEFAULT 'pending' CHECK (rights_status IN ('pending','verified','rejected')),
+            rights_reference text,
+            rights_expires_at timestamptz,
+            created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            published_at timestamptz
+          );
+          CREATE UNIQUE INDEX catalog_items_tmdb_unique ON catalog_items(tmdb_id) WHERE tmdb_id IS NOT NULL;
+          CREATE INDEX catalog_items_public_idx ON catalog_items(publication_status, content_type, title);
+          INSERT INTO schema_migrations(version) VALUES (4);
+        `);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    }
     if (superAdminEmails.length) await client.query("INSERT INTO user_roles(user_id,role_id) SELECT id,$2 FROM users WHERE lower(email)=ANY($1::text[]) ON CONFLICT DO NOTHING", [superAdminEmails, "super_admin"]);
   } finally {
     await client.query("SELECT pg_advisory_unlock(72819402)");
