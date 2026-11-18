@@ -35,6 +35,8 @@
 - Toutes les opérations administratives sont journalisées.
 - Import et paiements idempotents ; webhooks signés.
 - Les clés TMDB/Discord/Stripe et autres secrets restent exclusivement côté serveur.
+- OAuth Discord vérifie le paramètre state et refuse l’auto-liaison d’une adresse déjà utilisée ; l’association de comptes doit être effectuée depuis une session authentifiée.
+- Les webhooks Stripe sont vérifiés sur le corps HTTP brut, avec fenêtre anti-rejeu et déduplication des identifiants d’événements.
 - Aucune URL de streaming n'est approuvée par simple correspondance TMDB ou disponibilité technique.
 - Les données de production sont interdites dans le dépôt Git et les fixtures de tests.
 
@@ -45,12 +47,17 @@
 - [x] API Fastify initiale, persistance PostgreSQL, inscription/connexion e-mail et sessions sécurisées.
 - [x] Gestion serveur d’un profil principal protégé et de quatre sous-profils maximum (cinq profils au total), édition, suppression des sous-profils et heartbeat de présence.
 - [x] Première protection RBAC de l’administration et endpoint de métriques réelles (comptes, profils, sessions, latence SQL).
-- [ ] OAuth Discord et vérification/récupération d’e-mail.
+- [x] Backend OAuth Discord : échange de code, contrôle du state, e-mail Discord vérifié, création de compte et session ; nécessite les identifiants Discord et un test de configuration réel.
+- [ ] Liaison d’un Discord à un compte e-mail existant, vérification/récupération d’e-mail et modèles transactionnels complets.
 - [ ] Présence multi-appareils consolidée, indicateurs « récemment actif » et PIN de profil.
 - [x] Modèle PostgreSQL de catalogue films/séries, import API JSON par lots (100 max), journal d'audit et publication bloquée tant que les droits ne sont pas vérifiés.
 - [ ] Interface d'import catalogue, édition, validation des licences et publication.
-- [ ] Gestion VIP, publicités et webhooks.
-- [ ] Intégrations réelles et monitoring.
+- [x] Fondations Stripe Checkout en abonnement, liste blanche des Price IDs, vérification de signature des webhooks, idempotence et synchronisation de l’état des abonnements.
+- [ ] Interface de gestion des offres VIP, remboursements, avantages et portail client Stripe.
+- [ ] Gestion des campagnes publicitaires et serveur de diffusion publicitaire.
+- [x] Recherche de métadonnées TMDB côté serveur, statut d’intégrations dans l’administration et test d’envoi e-mail Resend.
+- [x] Registre de configuration pour Discord, TMDB, Stripe, Resend, stockage S3/R2, Redis, Sentry et PostHog ; les fournisseurs non testés sont affichés « configurés » et non « connectés ».
+- [ ] Adaptateurs réels S3/R2 et Redis, instrumentation Sentry/PostHog/OpenTelemetry, alertes et tests de bout en bout.
 - [ ] Tests e2e, sécurité, CI complète et déploiement.
 
 **Important :** l'interface actuelle est un prototype interactif de présentation. Les indicateurs et contenus visibles sont explicitement des états d'aperçu ; aucune création de compte, transaction, présence réelle ou mesure de latence n'est simulée comme si elle était en production.
