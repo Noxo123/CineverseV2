@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type IntegrationState = "connected" | "configured" | "missing" | "error";
 
@@ -52,24 +52,12 @@ export function verifyStripeSignature(rawBody: Buffer, signatureHeader: string, 
   const parts = signatureHeader.split(",").map(part => part.split("=", 2));
   const timestamp = parts.find(([key]) => key === "t")?.[1];
   const signatures = parts.filter(([key]) => key === "v1").map(([, value]) => value);
-  if (!timestamp || !/^\d+$/.test(timestamp) || !signatures.length) return false;
+  if (!timestamp || !/^\\d+$/.test(timestamp) || !signatures.length) return false;
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
-  const expected = Buffer.from(
-    (awaitlessHmac(timestamp, rawBody, secret)),
-    "hex"
-  );
+  const expected = createHmac("sha256", secret).update(timestamp + ".").update(rawBody).digest();
   return signatures.some(candidate => {
     if (!/^[a-f0-9]{64}$/i.test(candidate)) return false;
     const actual = Buffer.from(candidate, "hex");
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   });
-}
-
-function awaitlessHmac(timestamp: string, body: Buffer, secret: string): string {
-  const { createHmac } = requireCrypto();
-  return createHmac("sha256", secret).update(timestamp + ".").update(body).digest("hex");
-}
-
-function requireCrypto() {
-  return { createHmac: (awaitImportCrypto as unknown as (name: string) => typeof import("node:crypto").createHmac)("node:crypto") };
 }
