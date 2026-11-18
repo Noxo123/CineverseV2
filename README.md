@@ -33,3 +33,20 @@ Le dépôt V2 est initialisé à partir d'un dépôt vierge. Le dépôt V1 est c
 - [ ] Phase 8 — Sécurité, validation, documentation et préparation de migration
 
 Les cases ne seront cochées qu'après vérification des livrables correspondants.
+
+
+## Développement local — premier socle
+
+Prérequis : Node.js 22+, npm 10+ et PostgreSQL.
+
+1. Copier `.env.example` vers `.env` et définir `DATABASE_URL`, `SESSION_SECRET` (32 caractères minimum), `WEB_ORIGIN` et `VITE_API_BASE_URL`.
+2. Installer : `npm install`.
+3. Démarrer l'API : `npm run dev:api`.
+4. Dans un autre terminal, démarrer le web : `npm run dev`.
+5. Ouvrir `http://localhost:5173`.
+
+L'API crée sa première migration PostgreSQL au démarrage, sous verrou consultatif. Le frontend utilise les endpoints de compte et de profils de l'API. Les autres rubriques d'administration restent des interfaces de travail tant que leurs services et permissions ne sont pas implémentés.
+
+- Spécification fonctionnelle : [docs/PRODUCT-SPEC.md](docs/PRODUCT-SPEC.md)
+- Audit V1 : [docs/AUDIT-V1.md](docs/AUDIT-V1.md)
+- Sécurité et données : [docs/SECURITY-AND-DATA.md](docs/SECURITY-AND-DATA.md)
