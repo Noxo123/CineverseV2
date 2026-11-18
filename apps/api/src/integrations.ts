@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { access, mkdir } from "node:fs/promises";
+import { access, constants, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export type IntegrationState = "connected" | "configured" | "missing" | "error";
@@ -19,7 +19,7 @@ async function checkLocalStorage(): Promise<{ state: IntegrationState; detail: s
   const directory = resolve(process.env.LOCAL_STORAGE_DIR?.trim() || "./storage");
   try {
     await mkdir(directory, { recursive: true, mode: 0o750 });
-    await access(directory);
+    await access(directory, constants.R_OK | constants.W_OK);
     return { state: "connected", detail: "Stockage local accessible · " + directory };
   } catch {
     return { state: "error", detail: "Dossier local inaccessible · vérifier le chemin et les permissions" };
