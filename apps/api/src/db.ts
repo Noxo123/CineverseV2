@@ -162,6 +162,48 @@ export async function migrate() {
         throw error;
       }
     }
+    const versionFive = await client.query("SELECT version FROM schema_migrations WHERE version = 5");
+    if (versionFive.rowCount === 0) {
+      await client.query("BEGIN");
+      try {
+        await client.query(`
+          CREATE TABLE oauth_accounts (
+            id uuid PRIMARY KEY,
+            user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            provider text NOT NULL,
+            provider_user_id text NOT NULL,
+            provider_email text,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE(provider, provider_user_id),
+            UNIQUE(user_id, provider)
+          );
+          CREATE INDEX oauth_accounts_user_idx ON oauth_accounts(user_id);
+          CREATE TABLE stripe_webhook_events (
+            id text PRIMARY KEY,
+            event_type text NOT NULL,
+            processed_at timestamptz NOT NULL DEFAULT now()
+          );
+          CREATE TABLE vip_subscriptions (
+            id uuid PRIMARY KEY,
+            user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            stripe_customer_id text,
+            stripe_subscription_id text UNIQUE,
+            stripe_checkout_session_id text UNIQUE,
+            price_id text,
+            status text NOT NULL DEFAULT 'pending',
+            current_period_end timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+          );
+          CREATE INDEX vip_subscriptions_user_idx ON vip_subscriptions(user_id, status);
+          INSERT INTO schema_migrations(version) VALUES (5);
+        `);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    }
     if (superAdminEmails.length) await client.query("INSERT INTO user_roles(user_id,role_id) SELECT id,$2 FROM users WHERE lower(email)=ANY($1::text[]) ON CONFLICT DO NOTHING", [superAdminEmails, "super_admin"]);
   } finally {
     await client.query("SELECT pg_advisory_unlock(72819402)");
