@@ -5,7 +5,7 @@ import {
   Activity, ArrowLeft, ArrowRight, Check, ChevronDown, Clapperboard,
   Command, Film, Gauge, Globe2, LayoutDashboard, LockKeyhole, Mail, Menu,
   Pencil, Play, Plus, Search, Settings, Shield, ShieldCheck, Sparkles,
-  Ticket, Tv, Upload, Users, Video, X, Zap
+  Ticket, Tv, Users, Video, X, Zap
 } from "lucide-react";
 
 type Screen = "home" | "login" | "register" | "profiles" | "profile-edit" | "catalog";
