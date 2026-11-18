@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -9,7 +9,10 @@ import {
 } from "lucide-react";
 
 type Screen = "home" | "login" | "register" | "profiles" | "profile-edit" | "catalog";
-type Profile = { id: number; name: string; color: string; initials: string; online: boolean; child: boolean };
+type Profile = { id: string | number; name: string; color: string; initials: string; online: boolean; child: boolean };
+type ApiProfile = { id: string; name: string; avatar_key?: string; avatarKey?: string; is_kids?: boolean; isKids?: boolean; online?: boolean };
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const fromApiProfile = (profile: ApiProfile): Profile => ({ id: profile.id, name: profile.name, color: profile.avatar_key ?? profile.avatarKey ?? "coral", initials: profile.name.slice(0, 1).toUpperCase(), online: Boolean(profile.online), child: Boolean(profile.is_kids ?? profile.isKids) });
 type AdminSection = "overview" | "catalog" | "vip" | "ads" | "apis" | "monitoring" | "users" | "settings";
 
 const initialProfiles: Profile[] = [
@@ -45,6 +48,9 @@ function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminSection, setAdminSection] = useState<AdminSection>("overview");
   const [profiles, setProfiles] = useState(initialProfiles);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [profileColor, setProfileColor] = useState("coral");
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [profileName, setProfileName] = useState("");
@@ -58,6 +64,27 @@ function App() {
 
   const filteredFilms = useMemo(() => films.filter(f => (f.title + f.genre).toLowerCase().includes(query.toLowerCase())), [query]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch(API_BASE + "/api/v1/auth/me", { credentials: "include" })
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => {
+        if (cancelled || !data?.user) return;
+        setIsAuthenticated(true);
+        setProfiles((data.profiles as ApiProfile[]).map(fromApiProfile));
+        setScreen("profiles");
+      }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!activeProfile || typeof activeProfile.id !== "string") return;
+    const ping = () => fetch(API_BASE + "/api/v1/profiles/" + activeProfile.id + "/presence", { method: "POST", credentials: "include" }).catch(() => undefined);
+    void ping();
+    const timer = window.setInterval(() => void ping(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [activeProfile]);
+
   const notify = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 3600);
@@ -67,25 +94,92 @@ function App() {
     setEditing(profile ?? null);
     setProfileName(profile?.name ?? "");
     setProfileChild(profile?.child ?? false);
+    setProfileColor(profile?.color ?? "coral");
     setScreen("profile-edit");
   };
 
-  const saveProfile = () => {
-    if (!profileName.trim()) return notify("Choisis un nom pour ce profil.");
-    if (editing) {
-      setProfiles(current => current.map(p => p.id === editing.id ? { ...p, name: profileName.trim(), child: profileChild, initials: profileName.trim().slice(0, 1).toUpperCase() } : p));
-    } else {
-      if (profiles.length >= 5) return notify("Tu as atteint la limite de 5 profils.");
-      const colors = ["coral", "blue", "mint", "violet", "amber"];
-      setProfiles(current => [...current, { id: Date.now(), name: profileName.trim(), color: colors[current.length % colors.length], initials: profileName.trim().slice(0, 1).toUpperCase(), online: false, child: profileChild }]);
-    }
-    setScreen("profiles");
-    notify("Profil enregistré dans cet aperçu.");
+  const refreshProfiles = async () => {
+    const response = await fetch(API_BASE + "/api/v1/auth/me", { credentials: "include" });
+    if (!response.ok) throw new Error("Impossible de charger les profils.");
+    const data = await response.json();
+    setProfiles((data.profiles as ApiProfile[]).map(fromApiProfile));
   };
 
-  const submitAuth = (event: FormEvent<HTMLFormElement>) => {
+  const saveProfile = async () => {
+    if (!profileName.trim()) return notify("Choisis un nom pour ce profil.");
+    if (isAuthenticated) {
+      try {
+        const response = await fetch(API_BASE + (editing ? "/api/v1/profiles/" + editing.id : "/api/v1/profiles"), {
+          method: editing ? "PATCH" : "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: profileName.trim(), avatarKey: profileColor, isKids: profileChild })
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error === "profile_limit_reached" ? "Tu as atteint la limite de cinq profils." : "Impossible d'enregistrer ce profil.");
+        }
+        await refreshProfiles();
+        setScreen("profiles");
+        notify("Profil enregistré.");
+      } catch (error) { notify(error instanceof Error ? error.message : "Erreur réseau."); }
+      return;
+    }
+    if (editing) {
+      setProfiles(current => current.map(p => p.id === editing.id ? { ...p, name: profileName.trim(), color: profileColor, child: profileChild, initials: profileName.trim().slice(0, 1).toUpperCase() } : p));
+    } else {
+      if (profiles.length >= 5) return notify("Tu as atteint la limite de 5 profils.");
+      setProfiles(current => [...current, { id: Date.now(), name: profileName.trim(), color: profileColor, initials: profileName.trim().slice(0, 1).toUpperCase(), online: false, child: profileChild }]);
+    }
+    setScreen("profiles");
+    notify("Profil modifié dans l'aperçu local.");
+  };
+
+  const deleteProfile = async () => {
+    if (!editing) return;
+    if (isAuthenticated && typeof editing.id === "string") {
+      try {
+        const response = await fetch(API_BASE + "/api/v1/profiles/" + editing.id, { method: "DELETE", credentials: "include" });
+        if (!response.ok) throw new Error("Impossible de supprimer ce profil.");
+        await refreshProfiles();
+      } catch (error) { notify(error instanceof Error ? error.message : "Erreur réseau."); return; }
+    } else {
+      setProfiles(current => current.filter(profile => profile.id !== editing.id));
+    }
+    if (activeProfile?.id === editing.id) setActiveProfile(null);
+    setScreen("profiles");
+    notify("Profil supprimé.");
+  };
+
+  const logout = async () => {
+    try { await fetch(API_BASE + "/api/v1/auth/logout", { method: "POST", credentials: "include" }); } catch { /* session expiry is handled by the API */ }
+    setIsAuthenticated(false);
+    setActiveProfile(null);
+    setProfiles(initialProfiles);
+    setScreen("home");
+    notify("Tu es déconnecté.");
+  };
+
+  const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    notify("L'interface est prête. Le service sécurisé de compte sera connecté dans le prochain lot.");
+    setAuthBusy(true);
+    try {
+      const response = await fetch(API_BASE + "/api/v1/auth/" + (screen === "register" ? "register" : "login"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail, password: authPassword })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error === "email_already_registered" ? "Cette adresse e-mail possède déjà un compte." : data.error === "invalid_credentials" ? "Adresse e-mail ou mot de passe incorrect." : data.error === "invalid_input" ? "Vérifie ton adresse et utilise un mot de passe d'au moins 10 caractères." : "Le service de compte est indisponible.");
+      setIsAuthenticated(true);
+      await refreshProfiles();
+      setScreen("profiles");
+      setAuthPassword("");
+      notify(screen === "register" ? "Compte créé. Choisis ton profil." : "Connexion réussie.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Impossible de joindre le serveur.");
+    } finally { setAuthBusy(false); }
   };
 
   const chooseProfile = (profile: Profile) => {
@@ -137,9 +231,9 @@ function App() {
         ) : (
           <motion.main key={screen} className="page-wrap" initial={{ opacity: 0, y: 13 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -9 }} transition={{ duration: .24 }}>
             {screen === "home" && <><section className="hero"><div className="hero-copy"><span className="eyebrow"><Sparkles size={13}/> LE CINÉMA EN UN SEUL UNIVERS</span><h1>Chaque histoire<br/>mérite <em>son univers.</em></h1><p>Explore des mondes, retrouve tes films préférés et crée ton espace cinéma. Une nouvelle expérience pensée autour de toi.</p><div className="hero-actions"><button className="button" onClick={() => setScreen("register")}>Commencer l'expérience <ArrowRight size={17}/></button><button className="button button-ghost" onClick={() => setScreen("catalog")}><Play size={16}/> Explorer le catalogue</button></div><div className="hero-proof"><span><ShieldCheck size={15}/> Profils personnalisés</span><span><Tv size={15}/> Multi-écrans</span><span><Zap size={15}/> Expérience fluide</span></div></div><div className="hero-art"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="hero-poster poster-main"><span className="poster-kicker">UNE NOUVELLE ÈRE</span><strong>BEYOND<br/>THE STARS</strong><small>UNE HISTOIRE SANS FRONTIÈRE</small></div><div className="floating-chip chip-top"><Sparkles size={14}/> Ton cinéma, ton univers</div><div className="floating-chip chip-bottom"><Play size={13} fill="currentColor"/> Reprendre l'aventure</div></div></section><section className="section-block"><div className="section-heading"><div><span className="eyebrow">SÉLECTION CINEVERSE</span><h2>Des histoires à découvrir</h2></div><button className="text-link" onClick={() => setScreen("catalog")}>Tout explorer <ArrowRight size={15}/></button></div><div className="movie-grid">{films.map((f,i)=><button className="movie-card" key={f.title} onClick={() => notify("Le catalogue réel sera connecté à l'API.")}><div className={"movie-poster "+f.color}><span className="movie-tag">{f.tag}</span><span className="movie-number">0{i+1}</span><span className="movie-poster-title">{f.title}</span><span className="movie-play"><Play size={18} fill="currentColor"/></span></div><div className="movie-meta"><strong>{f.title}</strong><span>{f.genre} · {f.year}</span></div></button>)}</div></section><section className="feature-strip"><div><span className="eyebrow">UNE EXPÉRIENCE QUI TE RESSEMBLE</span><h2>Ton univers. Tes profils.<br/><em>Tes règles.</em></h2><p>Jusqu'à cinq espaces personnalisés pour que chacun retrouve ses recommandations, sa progression et ses envies.</p><button className="button button-secondary" onClick={() => setScreen("profiles")}>Découvrir les profils <ArrowRight size={16}/></button></div><div className="feature-profiles">{profiles.slice(0,3).map(p=><div className="feature-profile" key={p.id}><span className={"avatar avatar-large avatar-"+p.color}>{p.initials}</span><span>{p.name}</span><i className={p.online?"online-dot":""}/></div>)}</div></section></>}
-            {(screen === "login" || screen === "register") && <section className="auth-layout"><div className="auth-visual"><div className="auth-glow"/><span className="eyebrow">BIENVENUE DANS TON UNIVERS</span><h1>{screen === "login" ? "Heureux de te retrouver." : "Ton prochain chapitre commence ici."}</h1><p>Retrouve ton espace, tes profils et toutes tes découvertes au même endroit.</p><div className="auth-quote"><Clapperboard size={21}/><span>« Le meilleur siège est celui où commence ton histoire. »</span></div></div><div className="auth-card"><button className="back-link" onClick={() => setScreen("home")}><ArrowLeft size={15}/> Retour à l'accueil</button><div className="auth-card-head"><Brand/><span className="eyebrow">{screen === "login" ? "TON ESPACE T'ATTEND" : "REJOINS CINEVERSE"}</span><h2>{screen === "login" ? "Connexion" : "Créer un compte"}</h2><p>{screen === "login" ? "Connecte-toi pour retrouver ton cinéma." : "Quelques instants pour créer ton univers."}</p></div><form onSubmit={submitAuth}><label>Adresse e-mail<div className="input-wrap"><Mail size={17}/><input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="nom@exemple.com" required/></div></label><label>Mot de passe<div className="input-wrap"><LockKeyhole size={17}/><input type={showPassword?"text":"password"} value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="8 caractères minimum" minLength={8} required/><button type="button" className="show-password" onClick={()=>setShowPassword(v=>!v)}>{showPassword?"Masquer":"Voir"}</button></div></label>{screen === "register" && <label className="check-row"><input type="checkbox" required/> J'accepte les conditions d'utilisation et la politique de confidentialité.</label>}<button className="button auth-submit" type="submit">{screen === "login" ? "Se connecter" : "Créer mon compte"} <ArrowRight size={16}/></button></form><div className="auth-divider"><span/>ou<span/></div><button className="discord-button" onClick={() => notify("Connexion Discord : intégration OAuth à venir.")}><Command size={17}/> Continuer avec Discord</button><p className="auth-switch">{screen === "login" ? "Pas encore de compte ?" : "Tu as déjà un compte ?"} <button onClick={() => setScreen(screen === "login"?"register":"login")}>{screen === "login"?"Créer un compte":"Se connecter"}</button></p><p className="tiny muted auth-note">Aperçu de l'interface — aucun compte n'est créé tant que le backend d'authentification n'est pas raccordé.</p></div></section>}
-            {screen === "profiles" && <section className="profiles-page"><button className="back-link" onClick={() => setScreen(activeProfile?"catalog":"home")}><ArrowLeft size={15}/> Retour</button><div className="profiles-title"><span className="eyebrow">UN COMPTE, PLUSIEURS UNIVERS</span><h1>Qui regarde <em>aujourd'hui ?</em></h1><p>Choisis ton profil pour retrouver ton expérience personnalisée.</p></div><div className="profiles-grid">{profiles.map(p=><motion.div key={p.id} className="profile-tile" whileHover={{ y:-7 }}><button className="profile-select" onClick={()=>chooseProfile(p)}><span className={"avatar avatar-xl avatar-"+p.color}>{p.initials}</span><strong>{p.name}</strong><span className="profile-state">{p.online?<><i className="online-dot"/> En ligne</>:"Hors ligne"}{p.child&&" · Enfant"}</span></button><button className="profile-edit" onClick={()=>openEditor(p)} aria-label={"Modifier "+p.name}><Pencil size={15}/></button></motion.div>)}{profiles.length<5&&<button className="add-profile" onClick={()=>openEditor()}><span><Plus size={28}/></span><strong>Ajouter un profil</strong><small>{5-profiles.length} emplacement{5-profiles.length>1?"s":""} disponible{5-profiles.length>1?"s":""}</small></button>}</div><button className="manage-profiles" onClick={()=>openEditor(profiles[0])}>Gérer les profils <ArrowRight size={15}/></button><p className="tiny muted">Les statuts en ligne affichés ici sont des exemples d'interface. La présence réelle nécessitera un heartbeat serveur et une synchronisation temps réel.</p></section>}
-            {screen === "profile-edit" && <section className="edit-profile-page"><button className="back-link" onClick={()=>setScreen("profiles")}><ArrowLeft size={15}/> Retour aux profils</button><div className="edit-card"><span className="eyebrow">PERSONNALISATION</span><h1>{editing?"Modifier le profil":"Créer un profil"}</h1><p>Personnalise cet espace comme tu le souhaites.</p><div className="avatar-preview"><span className={"avatar avatar-xl avatar-"+(editing?.color??"coral")}>{profileName.trim().slice(0,1).toUpperCase()||"?"}</span></div><label>Nom du profil<input autoFocus maxLength={24} value={profileName} onChange={e=>setProfileName(e.target.value)} placeholder="Ex. Alex"/></label><label className="check-row child-toggle"><input type="checkbox" checked={profileChild} onChange={e=>setProfileChild(e.target.checked)}/> Profil enfant <small>Prévoir des restrictions adaptées à l'âge.</small></label><div className="edit-actions"><button className="button button-ghost" onClick={()=>setScreen("profiles")}>Annuler</button><button className="button" onClick={saveProfile}>Enregistrer <Check size={16}/></button></div></div></section>}
+            {(screen === "login" || screen === "register") && <section className="auth-layout"><div className="auth-visual"><div className="auth-glow"/><span className="eyebrow">BIENVENUE DANS TON UNIVERS</span><h1>{screen === "login" ? "Heureux de te retrouver." : "Ton prochain chapitre commence ici."}</h1><p>Retrouve ton espace, tes profils et toutes tes découvertes au même endroit.</p><div className="auth-quote"><Clapperboard size={21}/><span>« Le meilleur siège est celui où commence ton histoire. »</span></div></div><div className="auth-card"><button className="back-link" onClick={() => setScreen("home")}><ArrowLeft size={15}/> Retour à l'accueil</button><div className="auth-card-head"><Brand/><span className="eyebrow">{screen === "login" ? "TON ESPACE T'ATTEND" : "REJOINS CINEVERSE"}</span><h2>{screen === "login" ? "Connexion" : "Créer un compte"}</h2><p>{screen === "login" ? "Connecte-toi pour retrouver ton cinéma." : "Quelques instants pour créer ton univers."}</p></div><form onSubmit={submitAuth}><label>Adresse e-mail<div className="input-wrap"><Mail size={17}/><input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="nom@exemple.com" required/></div></label><label>Mot de passe<div className="input-wrap"><LockKeyhole size={17}/><input type={showPassword?"text":"password"} value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="10 caractères minimum" minLength={10} required/><button type="button" className="show-password" onClick={()=>setShowPassword(v=>!v)}>{showPassword?"Masquer":"Voir"}</button></div></label>{screen === "register" && <label className="check-row"><input type="checkbox" required/> J'accepte les conditions d'utilisation et la politique de confidentialité.</label>}<button className="button auth-submit" type="submit" disabled={authBusy}>{authBusy ? "Connexion…" : screen === "login" ? "Se connecter" : "Créer mon compte"} <ArrowRight size={16}/></button></form><div className="auth-divider"><span/>ou<span/></div><button className="discord-button" onClick={() => notify("Connexion Discord : intégration OAuth à venir.")}><Command size={17}/> Continuer avec Discord</button><p className="auth-switch">{screen === "login" ? "Pas encore de compte ?" : "Tu as déjà un compte ?"} <button onClick={() => setScreen(screen === "login"?"register":"login")}>{screen === "login"?"Créer un compte":"Se connecter"}</button></p><p className="tiny muted auth-note">Les comptes sont enregistrés par le service Cineverse lorsque l’API est démarrée et configurée.</p></div></section>}
+            {screen === "profiles" && <section className="profiles-page"><button className="back-link" onClick={() => setScreen(activeProfile?"catalog":"home")}><ArrowLeft size={15}/> Retour</button><div className="profiles-title"><span className="eyebrow">UN COMPTE, PLUSIEURS UNIVERS</span><h1>Qui regarde <em>aujourd'hui ?</em></h1><p>Choisis ton profil pour retrouver ton expérience personnalisée.</p></div><div className="profiles-grid">{profiles.map(p=><motion.div key={p.id} className="profile-tile" whileHover={{ y:-7 }}><button className="profile-select" onClick={()=>chooseProfile(p)}><span className={"avatar avatar-xl avatar-"+p.color}>{p.initials}</span><strong>{p.name}</strong><span className="profile-state">{p.online?<><i className="online-dot"/> En ligne</>:"Hors ligne"}{p.child&&" · Enfant"}</span></button><button className="profile-edit" onClick={()=>openEditor(p)} aria-label={"Modifier "+p.name}><Pencil size={15}/></button></motion.div>)}{profiles.length<5&&<button className="add-profile" onClick={()=>openEditor()}><span><Plus size={28}/></span><strong>Ajouter un profil</strong><small>{5-profiles.length} emplacement{5-profiles.length>1?"s":""} disponible{5-profiles.length>1?"s":""}</small></button>}</div><button className="manage-profiles" onClick={()=>openEditor(profiles[0])}>Gérer les profils <ArrowRight size={15}/></button>{isAuthenticated&&<button className="manage-profiles" onClick={logout}>Se déconnecter</button>}<p className="tiny muted">La présence est actualisée par le serveur pendant la sélection active. La synchronisation temps réel entre appareils sera renforcée dans le prochain lot.</p></section>}
+            {screen === "profile-edit" && <section className="edit-profile-page"><button className="back-link" onClick={()=>setScreen("profiles")}><ArrowLeft size={15}/> Retour aux profils</button><div className="edit-card"><span className="eyebrow">PERSONNALISATION</span><h1>{editing?"Modifier le profil":"Créer un profil"}</h1><p>Personnalise cet espace comme tu le souhaites.</p><div className="avatar-preview"><span className={"avatar avatar-xl avatar-"+(editing?.color??"coral")}>{profileName.trim().slice(0,1).toUpperCase()||"?"}</span></div><label>Nom du profil<input autoFocus maxLength={24} value={profileName} onChange={e=>setProfileName(e.target.value)} placeholder="Ex. Alex"/></label><div className="color-picker"><span>Couleur de l’avatar</span><div>{["coral","blue","mint","violet","amber"].map(color=><button type="button" key={color} className={profileColor===color?"color-choice selected":"color-choice"} onClick={()=>setProfileColor(color)}><i className={"avatar avatar-"+color}/></button>)}</div></div><label className="check-row child-toggle"><input type="checkbox" checked={profileChild} onChange={e=>setProfileChild(e.target.checked)}/> Profil enfant <small>Prévoir des restrictions adaptées à l'âge.</small></label><div className="edit-actions">{editing&&<button className="button button-danger" onClick={deleteProfile}>Supprimer</button>}<button className="button button-ghost" onClick={()=>setScreen("profiles")}>Annuler</button><button className="button" onClick={saveProfile}>Enregistrer <Check size={16}/></button></div></div></section>}
             {screen === "catalog" && <section className="catalog-page"><div className="catalog-heading"><div><span className="eyebrow">TON ESPACE CINÉMA {activeProfile&&"· "+activeProfile.name.toUpperCase()}</span><h1>Explore <em>l'inattendu.</em></h1><p>Des films et des séries à retrouver dans ton prochain univers.</p></div><div className="catalog-search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Rechercher un titre ou un genre"/></div></div><div className="catalog-filters"><button className="filter-chip active">Tout</button><button className="filter-chip">Films</button><button className="filter-chip">Séries</button><button className="filter-chip">Tendances</button><button className="filter-chip">Nouveautés</button></div><div className="movie-grid">{filteredFilms.map((f,i)=><button className="movie-card" key={f.title} onClick={()=>notify("Fiche détaillée et lecture seront reliées au catalogue.")}><div className={"movie-poster "+f.color}><span className="movie-tag">{f.tag}</span><span className="movie-number">0{i+1}</span><span className="movie-poster-title">{f.title}</span><span className="movie-play"><Play size={18} fill="currentColor"/></span></div><div className="movie-meta"><strong>{f.title}</strong><span>{f.genre} · {f.year}</span></div></button>)}</div>{filteredFilms.length===0&&<div className="empty-state"><Search/><strong>Aucun résultat</strong><p>Essaie un autre titre ou un autre genre.</p></div>}</section>}
           </motion.main>
         )}
