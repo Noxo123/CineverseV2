@@ -8,6 +8,8 @@ import argon2 from "argon2";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { env, isProduction, superAdminEmails } from "./env.js";
 import { db, migrate } from "./db.js";
 import { getIntegrationStatuses, verifyStripeSignature } from "./integrations.js";
@@ -29,7 +31,6 @@ await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });
 await app.register(cookie);
 await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
-await app.register(rawBody, { field: "rawBody", global: false, encoding: false, runFirst: true });
 await app.register(rawBody, { field: "rawBody", global: false, encoding: false, runFirst: true });
 
 app.addHook("onRequest", async (request, reply) => {
@@ -464,6 +465,7 @@ app.get("/api/v1/admin/overview", async (request, reply) => {
 });
 
 await migrate();
+await mkdir(resolve(env.LOCAL_STORAGE_DIR), { recursive: true, mode: 0o750 });
 try {
   await app.listen({ host: "0.0.0.0", port: env.PORT });
 } catch (error) {
