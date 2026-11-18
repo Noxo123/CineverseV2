@@ -2,6 +2,26 @@
 
 Ce document distingue les connecteurs réellement implémentés des fournisseurs simplement déclarés dans la configuration. Une variable renseignée ne signifie pas qu'un service est connecté.
 
+## Stockage local — configuration initiale
+
+- Le stockage est local au serveur qui exécute l'API. Aucun service S3, R2 ou CDN n'est requis.
+- Variable : `LOCAL_STORAGE_DIR=./storage`. Le chemin relatif est résolu depuis le répertoire de lancement du processus Node ; un chemin absolu est également accepté.
+- Le dossier est créé automatiquement lors du contrôle des intégrations par l'administration. Le processus API doit disposer des droits de lecture/écriture.
+- Le dossier de stockage ne doit pas être exposé directement par le serveur web. Les fichiers privés devront être servis par des routes API contrôlées.
+- Les sauvegardes du dossier doivent être incluses dans la stratégie de sauvegarde du serveur.
+
+## Films et séries — lecteurs iframe
+
+Cineverse ne stocke pas les fichiers vidéo : il conserve les métadonnées et, pour chaque contenu, une URL de lecteur intégrable.
+
+- Variable : `IFRAME_ALLOWED_HOSTS`, liste de domaines exacts séparés par des virgules.
+- Laisser la liste vide tant que les domaines des lecteurs n'ont pas été validés.
+- Seules les URL HTTPS et les origines explicitement autorisées doivent être acceptées par l'API.
+- Ne jamais accepter une URL iframe fournie librement par un visiteur ni utiliser une URL de lecteur comme source d'autorité sur les droits de diffusion.
+- Les lecteurs doivent être intégrés avec `sandbox`, `referrerpolicy`, une politique CSP `frame-src` restrictive et les permissions minimales nécessaires.
+- La configuration de la liste des domaines est préparée ; le formulaire d'administration de l'URL du lecteur et le rendu du player restent à implémenter.
+- L'utilisation d'un lecteur tiers reste soumise aux droits de diffusion, conditions du fournisseur et règles applicables.
+
 ## Connecteurs implémentés
 
 ### TMDB — métadonnées
@@ -35,11 +55,10 @@ Ce document distingue les connecteurs réellement implémentés des fournisseurs
 - Le test est réservé aux administrateurs et journalisé.
 - Les parcours de vérification d'adresse, mot de passe oublié et notifications automatiques ne sont pas encore branchés.
 
-## Fournisseurs déclarés, adaptateurs à terminer
+## Fournisseurs optionnels à terminer
 
 | Fournisseur | Variables | État réel |
 |---|---|---|
-| S3 / Cloudflare R2 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Configuration reconnue, client de stockage et URLs signées à développer |
 | Redis | `REDIS_URL` | Configuration reconnue, client/cache/pub-sub/limiteur partagé à développer |
 | Sentry | `SENTRY_DSN` | Configuration reconnue, SDK et instrumentation à développer |
 | PostHog | `POSTHOG_KEY`, `POSTHOG_HOST` | Configuration reconnue, SDK et consentement analytics à développer |
@@ -53,14 +72,15 @@ Ce document distingue les connecteurs réellement implémentés des fournisseurs
 4. Déclarer l'URL de callback Discord et l'URL webhook Stripe exactes.
 5. Ne jamais committer `.env`, clés API, jetons OAuth ou secrets webhook.
 6. En production, utiliser HTTPS et définir `WEB_ORIGIN` avec l'origine exacte du frontend.
-7. Vérifier les états depuis l'administration. « Configuré » signifie que les variables sont présentes ; « Connecté » n'est affiché qu'après un contrôle réseau réussi.
+7. Vérifier les états depuis l'administration. « Configuré » signifie que les variables sont présentes ; « Connecté » n'est affiché qu'après un contrôle réel réussi.
 
 ## À faire avant ouverture publique
 
 - Ajouter la liaison Discord à un compte e-mail existant depuis une session authentifiée.
 - Terminer les flux e-mail de vérification et de récupération de compte.
-- Ajouter S3/R2, Redis, Sentry et PostHog avec leurs tests d'intégration.
+- Ajouter Redis, Sentry et PostHog avec leurs tests d'intégration.
+- Ajouter les champs de lecteur iframe au catalogue, la validation des domaines et le player frontend sécurisé.
 - Ajouter des tests d'intégration PostgreSQL, OAuth et Stripe avec environnements sandbox.
 - Finaliser le portail Stripe, les offres VIP, les remboursements et les droits d'accès.
 - Vérifier les obligations RGPD, consentement analytics, politique de cookies et contrats des sous-traitants.
-- N'activer aucun fournisseur de lecture sans contrat, territoire et fenêtre de droits documentés.
+- N'activer aucun lecteur sans contrat, territoire et fenêtre de droits documentés.
