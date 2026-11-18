@@ -11,7 +11,7 @@
 1. Accueil public : présentation, sélection éditoriale, découverte, recherche et appels à l'action.
 2. Identification : e-mail/mot de passe, OAuth Discord, récupération de compte, vérification d'adresse, protection anti-bruteforce et sessions révocables.
 3. Inscription : validation serveur, consentement, e-mail de vérification et création du compte.
-4. Profils : maximum cinq profils par compte, nom, avatar, couleur, langue, préférences et indicateur enfant.
+4. Profils : un profil principal non supprimable et jusqu’à quatre sous-profils (cinq profils au total), nom, avatar, couleur, langue, préférences et indicateur enfant.
 5. Sélection de profil : cartes animées, présence en ligne multi-appareils, dernière activité et verrouillage PIN facultatif.
 6. Catalogue : films, séries, saisons, épisodes, recherche, filtres, fiches, favoris, historique et reprise de lecture.
 7. Lecture : uniquement des fournisseurs et médias dont les droits de diffusion sont vérifiés et enregistrés.
@@ -43,7 +43,7 @@
 - [x] Socle frontend React/Vite/TypeScript ajouté.
 - [x] Première interface animée : accueil, écrans d'authentification, sélection et édition de profils, catalogue d'aperçu, navigation d'administration.
 - [x] API Fastify initiale, persistance PostgreSQL, inscription/connexion e-mail et sessions sécurisées.
-- [x] Gestion serveur des cinq profils maximum, édition, suppression et heartbeat de présence.
+- [x] Gestion serveur d’un profil principal protégé et de quatre sous-profils maximum (cinq profils au total), édition, suppression des sous-profils et heartbeat de présence.
 - [x] Première protection RBAC de l’administration et endpoint de métriques réelles (comptes, profils, sessions, latence SQL).
 - [ ] OAuth Discord et vérification/récupération d’e-mail.
 - [ ] Présence multi-appareils consolidée, indicateurs « récemment actif » et PIN de profil.
