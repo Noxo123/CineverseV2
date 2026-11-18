@@ -237,26 +237,54 @@ const catalogImportSchema = z.object({
   })).min(1).max(100)
 });
 
+const iframeColumnCandidates = ["iframe_url", "iframe", "embed_url", "url_iframe", "player_url", "video_url", "stream_url", "lien"];
+
+async function getCatalogIframeColumn() {
+  const result = await db.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='catalog_items' AND column_name = ANY($1::text[])",
+    [iframeColumnCandidates]
+  );
+  const found = new Set(result.rows.map((row: { column_name: string }) => row.column_name));
+  return iframeColumnCandidates.find(column => found.has(column)) ?? null;
+}
+
+function extractIframeUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const raw = value.trim();
+  const match = raw.match(/<iframe\\b[^>]*\\bsrc\\s*=\\s*["']([^"']+)["']/i);
+  const candidate = match?.[1] ?? raw;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 app.get("/api/v1/catalog", async (request, reply) => {
   const parsed = z.object({
     type: z.enum(["movie", "tv"]).optional(),
     q: z.string().trim().max(120).optional()
   }).safeParse(request.query);
   if (!parsed.success) return reply.code(400).send({ error: "invalid_query" });
+  const iframeColumn = await getCatalogIframeColumn();
+  const iframeSelect = iframeColumn ? `"${iframeColumn}" AS iframe_source` : "NULL::text AS iframe_source";
   const result = await db.query(
-    "SELECT id,content_type,title,synopsis,release_year,poster_url FROM catalog_items WHERE publication_status='published' AND rights_status='verified' AND (rights_expires_at IS NULL OR rights_expires_at > now()) AND ($1::text IS NULL OR content_type=$1) AND ($2::text IS NULL OR title ILIKE '%' || $2 || '%') ORDER BY published_at DESC NULLS LAST, title ASC LIMIT 100",
+    `SELECT id,content_type,title,synopsis,release_year,poster_url,${iframeSelect} FROM catalog_items WHERE publication_status='published' AND rights_status='verified' AND (rights_expires_at IS NULL OR rights_expires_at > now()) AND ($1::text IS NULL OR content_type=$1) AND ($2::text IS NULL OR title ILIKE '%' || $2 || '%') ORDER BY published_at DESC NULLS LAST, title ASC LIMIT 100`,
     [parsed.data.type ?? null, parsed.data.q ?? null]
   );
-  return { items: result.rows };
+  return { items: result.rows.map(({ iframe_source, ...item }) => ({ ...item, iframe_url: extractIframeUrl(iframe_source) })) };
 });
 
 app.get("/api/v1/admin/catalog", async (request, reply) => {
   const session = await requireAdmin(request, reply);
   if (!session) return;
+  const iframeColumn = await getCatalogIframeColumn();
+  const iframeSelect = iframeColumn ? `"${iframeColumn}" AS iframe_source` : "NULL::text AS iframe_source";
   const result = await db.query(
-    "SELECT id,content_type,title,synopsis,release_year,poster_url,tmdb_id,publication_status,rights_status,rights_reference,rights_expires_at,created_at,updated_at FROM catalog_items ORDER BY updated_at DESC LIMIT 500"
+    `SELECT id,content_type,title,synopsis,release_year,poster_url,tmdb_id,publication_status,rights_status,rights_reference,rights_expires_at,created_at,updated_at,${iframeSelect} FROM catalog_items ORDER BY updated_at DESC LIMIT 500`
   );
-  return { items: result.rows };
+  return { items: result.rows.map(({ iframe_source, ...item }) => ({ ...item, iframe_url: extractIframeUrl(iframe_source) })) };
 });
 
 app.post("/api/v1/admin/catalog/import", async (request, reply) => {
