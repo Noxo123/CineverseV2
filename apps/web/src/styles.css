@@ -2,3 +2,7 @@
 
 .color-picker{display:flex;flex-direction:column;gap:10px}.color-picker>span{font-size:11px;color:#d8cbd0}.color-picker>div{display:flex;gap:10px}.color-choice{width:42px;height:42px;border:1px solid transparent;border-radius:12px;background:#ffffff08;display:grid;place-items:center}.color-choice.selected{border-color:#d5ad76;box-shadow:0 0 0 2px #d5ad7622}.color-choice .avatar{width:27px;height:27px;border-radius:9px}.button-danger{background:#281218;border-color:#6f2737;box-shadow:none;color:#f0a6ae}.button:disabled{opacity:.55;cursor:wait;transform:none}
 
+
+
+/* Lecteur iframe du catalogue Cineverse */
+.catalog-player{width:100%;max-width:1280px;margin:0 auto;padding:28px 0 64px}.player-heading{margin:30px 0 22px}.player-heading h1{font-size:clamp(2rem,5vw,3.6rem);margin:8px 0 12px}.player-heading p{max-width:850px;color:var(--muted,#aaa);line-height:1.7}.iframe-player{width:100%;aspect-ratio:16/9;background:#050505;border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.35)}.iframe-player iframe{display:block;width:100%;height:100%;border:0;background:#000}.catalog-player .back-link{display:inline-flex;align-items:center;gap:8px}
