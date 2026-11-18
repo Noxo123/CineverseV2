@@ -95,12 +95,12 @@ export async function migrate() {
           INSERT INTO roles(id,label,permissions,is_global) VALUES
             ('super_admin','Super administrateur','["*"]'::jsonb,true),
             ('admin','Administrateur','["dashboard.read","catalog.read","catalog.write","users.read","users.moderate","vip.read","vip.write","ads.read","ads.write","integrations.read","monitoring.read"]'::jsonb,true);
-          INSERT INTO user_roles(user_id,role_id)
-            SELECT id,'super_admin' FROM users
-            WHERE lower(email)=ANY($1::text[])
-            ON CONFLICT DO NOTHING;
           INSERT INTO schema_migrations(version) VALUES (2);
-        `, [superAdminEmails]);
+        `);
+        await client.query(
+          "INSERT INTO user_roles(user_id,role_id) SELECT id,$2 FROM users WHERE lower(email)=ANY($1::text[]) ON CONFLICT DO NOTHING",
+          [superAdminEmails, "super_admin"]
+        );
         await client.query("COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
