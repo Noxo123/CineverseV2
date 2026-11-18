@@ -107,6 +107,29 @@ export async function migrate() {
         throw error;
       }
     }
+    const versionThree = await client.query("SELECT version FROM schema_migrations WHERE version = 3");
+    if (versionThree.rowCount === 0) {
+      await client.query("BEGIN");
+      try {
+        await client.query(`
+          ALTER TABLE profiles ADD COLUMN is_primary boolean NOT NULL DEFAULT false;
+          UPDATE profiles p SET is_primary=true
+          WHERE p.id = (
+            SELECT first_profile.id FROM profiles first_profile
+            WHERE first_profile.account_id=p.account_id
+            ORDER BY first_profile.created_at, first_profile.id
+            LIMIT 1
+          );
+          CREATE UNIQUE INDEX profiles_one_primary_per_account
+            ON profiles(account_id) WHERE is_primary=true;
+          INSERT INTO schema_migrations(version) VALUES (3);
+        `);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    }
     if (superAdminEmails.length) await client.query("INSERT INTO user_roles(user_id,role_id) SELECT id,$2 FROM users WHERE lower(email)=ANY($1::text[]) ON CONFLICT DO NOTHING", [superAdminEmails, "super_admin"]);
   } finally {
     await client.query("SELECT pg_advisory_unlock(72819402)");
