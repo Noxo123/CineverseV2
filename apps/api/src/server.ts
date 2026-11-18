@@ -301,6 +301,26 @@ app.get("/api/v1/admin/integrations", async (request, reply) => {
   return { integrations: await getIntegrationStatuses() };
 });
 
+app.post("/api/v1/admin/integrations/email/test", async (request, reply) => {
+  const session = await requireAdmin(request, reply);
+  if (!session) return;
+  const parsed = z.object({ to: z.string().email().max(254) }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: "invalid_email" });
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) return reply.code(503).send({ error: "email_not_configured" });
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to: [parsed.data.to], subject: "Test de configuration Cineverse", html: "<p>Le service e-mail transactionnel Cineverse est correctement connecté.</p>" }),
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) return reply.code(502).send({ error: "email_provider_rejected_request" });
+  const result = await response.json() as { id?: string };
+  await db.query("INSERT INTO audit_logs(id,actor_user_id,action,target_type,target_id,metadata) VALUES($1,$2,$3,$4,$5,$6::jsonb)", [randomUUID(), session.user_id, "admin.integration.email_test", "email", parsed.data.to, JSON.stringify({ provider: "resend", messageId: result.id ?? null })]);
+  return { sent: true, providerMessageId: result.id ?? null };
+});
+
 app.get("/api/v1/integrations/tmdb/search", async (request, reply) => {
   const parsed = z.object({ q: z.string().trim().min(1).max(100), type: z.enum(["movie", "tv"]).default("movie"), page: z.coerce.number().int().min(1).max(10).default(1) }).safeParse(request.query);
   if (!parsed.success) return reply.code(400).send({ error: "invalid_query" });
