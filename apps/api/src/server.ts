@@ -3,12 +3,16 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import rawBody from "fastify-raw-body";
+import rawBody from "fastify-raw-body";
 import argon2 from "argon2";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env, isProduction, superAdminEmails } from "./env.js";
 import { db, migrate } from "./db.js";
+import { getIntegrationStatuses, verifyStripeSignature } from "./integrations.js";
+import { getIntegrationStatuses, verifyStripeSignature } from "./integrations.js";
 
 const app = Fastify({ logger: true, trustProxy: false, bodyLimit: 1_048_576 });
 const cookieName = isProduction ? "__Host-cineverse_session" : "cineverse_session";
@@ -27,6 +31,8 @@ await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });
 await app.register(cookie);
 await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+await app.register(rawBody, { field: "rawBody", global: false, encoding: false, runFirst: true });
+await app.register(rawBody, { field: "rawBody", global: false, encoding: false, runFirst: true });
 
 app.addHook("onRequest", async (request, reply) => {
   if (request.method === "OPTIONS" || request.url.startsWith("/health/")) return;
@@ -288,6 +294,138 @@ app.post("/api/v1/admin/catalog/import", async (request, reply) => {
     client.release();
   }
   return reply.code(201).send({ imported: importedIds.length, ids: importedIds, publicationStatus: "draft", rightsStatus: "pending" });
+});
+
+
+app.get("/api/v1/admin/integrations", async (request, reply) => {
+  const session = await requireAdmin(request, reply);
+  if (!session) return;
+  return { integrations: await getIntegrationStatuses() };
+});
+
+app.get("/api/v1/integrations/tmdb/search", async (request, reply) => {
+  const parsed = z.object({ q: z.string().trim().min(1).max(100), type: z.enum(["movie", "tv"]).default("movie"), page: z.coerce.number().int().min(1).max(10).default(1) }).safeParse(request.query);
+  if (!parsed.success) return reply.code(400).send({ error: "invalid_query" });
+  const token = process.env.TMDB_READ_ACCESS_TOKEN;
+  const key = process.env.TMDB_API_KEY;
+  if (!token && !key) return reply.code(503).send({ error: "tmdb_not_configured" });
+  const url = new URL("https://api.themoviedb.org/3/search/" + parsed.data.type);
+  url.searchParams.set("query", parsed.data.q);
+  url.searchParams.set("page", String(parsed.data.page));
+  if (!token && key) url.searchParams.set("api_key", key);
+  try {
+    const response = await fetch(url, { headers: token ? { Authorization: "Bearer " + token, accept: "application/json" } : { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return reply.code(response.status === 401 ? 502 : response.status).send({ error: "tmdb_request_failed" });
+    const data = await response.json() as { page: number; total_results: number; results: Array<Record<string, unknown>> };
+    return { page: data.page, totalResults: data.total_results, results: data.results.map(item => ({ id: item.id, title: item.title ?? item.name, synopsis: item.overview, releaseDate: item.release_date ?? item.first_air_date, posterPath: item.poster_path, type: parsed.data.type })) };
+  } catch { return reply.code(502).send({ error: "tmdb_unavailable" }); }
+});
+
+app.get("/api/v1/auth/discord", async (_request, reply) => {
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  const redirectUri = process.env.DISCORD_REDIRECT_URI;
+  if (!clientId || !process.env.DISCORD_CLIENT_SECRET || !redirectUri) return reply.code(503).send({ error: "discord_not_configured" });
+  const state = randomBytes(24).toString("base64url");
+  reply.setCookie("cineverse_discord_state", state, { path: "/api/v1/auth/discord/callback", httpOnly: true, secure: isProduction, sameSite: "lax", maxAge: 600 });
+  const url = new URL("https://discord.com/oauth2/authorize");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "identify email");
+  url.searchParams.set("state", state);
+  return reply.redirect(url.toString());
+});
+
+app.get("/api/v1/auth/discord/callback", async (request, reply) => {
+  const parsed = z.object({ code: z.string().min(1), state: z.string().min(1) }).safeParse(request.query);
+  const expectedState = request.cookies.cineverse_discord_state;
+  reply.clearCookie("cineverse_discord_state", { path: "/api/v1/auth/discord/callback", secure: isProduction, httpOnly: true, sameSite: "lax" });
+  if (!parsed.success || !expectedState || parsed.data.state !== expectedState) return reply.code(400).send({ error: "invalid_oauth_state" });
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+  const redirectUri = process.env.DISCORD_REDIRECT_URI;
+  if (!clientId || !clientSecret || !redirectUri) return reply.code(503).send({ error: "discord_not_configured" });
+  try {
+    const tokenResponse = await fetch("https://discord.com/api/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: "authorization_code", code: parsed.data.code, redirect_uri: redirectUri }), signal: AbortSignal.timeout(8000) });
+    if (!tokenResponse.ok) return reply.code(401).send({ error: "discord_token_exchange_failed" });
+    const tokenData = await tokenResponse.json() as { access_token: string; token_type: string };
+    const userResponse = await fetch("https://discord.com/api/users/@me", { headers: { Authorization: tokenData.token_type + " " + tokenData.access_token }, signal: AbortSignal.timeout(8000) });
+    if (!userResponse.ok) return reply.code(401).send({ error: "discord_identity_failed" });
+    const identity = await userResponse.json() as { id: string; email?: string; verified?: boolean };
+    if (!identity.email || !identity.verified) return reply.code(403).send({ error: "discord_verified_email_required" });
+    const existing = await db.query("SELECT u.id FROM oauth_accounts o JOIN users u ON u.id=o.user_id WHERE o.provider=$1 AND o.provider_user_id=$2", ["discord", identity.id]);
+    let userId: string;
+    if (existing.rowCount) userId = existing.rows[0].id;
+    else {
+      const emailOwner = await db.query("SELECT id FROM users WHERE lower(email)=lower($1)", [identity.email]);
+      if (emailOwner.rowCount) return reply.code(409).send({ error: "email_already_registered_login_to_link" });
+      userId = randomUUID();
+      const temporaryPasswordHash = await argon2.hash(randomBytes(48).toString("hex"), { type: argon2.argon2id });
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("INSERT INTO users(id,email,password_hash,email_verified_at) VALUES($1,$2,$3,now())", [userId, identity.email.toLowerCase(), temporaryPasswordHash]);
+        await client.query("INSERT INTO profiles(id,account_id,name,is_primary) VALUES($1,$2,$3,true)", [randomUUID(), userId, "Principal"]);
+        await client.query("INSERT INTO oauth_accounts(id,user_id,provider,provider_user_id,provider_email) VALUES($1,$2,$3,$4,$5)", [randomUUID(), userId, "discord", identity.id, identity.email.toLowerCase()]);
+        if (superAdminEmails.includes(identity.email.toLowerCase())) await client.query("INSERT INTO user_roles(user_id,role_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [userId, "super_admin"]);
+        await client.query("COMMIT");
+      } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    }
+    const token = randomBytes(32).toString("base64url");
+    await db.query("INSERT INTO sessions(id,user_id,token_hash,expires_at,user_agent) VALUES($1,$2,$3,now()+($4 || ' days')::interval,$5)", [randomUUID(), userId, hash(token), String(env.SESSION_TTL_DAYS), request.headers["user-agent"]?.slice(0, 500) ?? null]);
+    reply.setCookie(cookieName, token, sessionCookie);
+    return reply.redirect(env.WEB_ORIGIN + "/?auth=discord");
+  } catch (error) { request.log.error(error); return reply.code(502).send({ error: "discord_login_failed" }); }
+});
+
+app.post("/api/v1/billing/checkout", async (request, reply) => {
+  const session = await getSession(request);
+  if (!session) return reply.code(401).send({ error: "unauthenticated" });
+  const parsed = z.object({ priceId: z.string().min(1).max(120) }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: "invalid_price" });
+  const allowedPrices = (process.env.STRIPE_PRICE_IDS ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey || !allowedPrices.includes(parsed.data.priceId)) return reply.code(503).send({ error: "billing_not_configured" });
+  const form = new URLSearchParams({ mode: "subscription", "line_items[0][price]": parsed.data.priceId, "line_items[0][quantity]": "1", success_url: process.env.STRIPE_SUCCESS_URL ?? env.WEB_ORIGIN + "/billing/success", cancel_url: process.env.STRIPE_CANCEL_URL ?? env.WEB_ORIGIN + "/billing/cancel", client_reference_id: session.user_id, "metadata[user_id]": session.user_id, "subscription_data[metadata][user_id]": session.user_id });
+  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", { method: "POST", headers: { Authorization: "Bearer " + stripeKey, "Content-Type": "application/x-www-form-urlencoded" }, body: form, signal: AbortSignal.timeout(10000) });
+  const data = await response.json() as { id?: string; url?: string };
+  if (!response.ok || !data.id || !data.url) return reply.code(502).send({ error: "stripe_checkout_failed" });
+  await db.query("INSERT INTO vip_subscriptions(id,user_id,stripe_checkout_session_id,price_id,status) VALUES($1,$2,$3,$4,'pending') ON CONFLICT (stripe_checkout_session_id) DO NOTHING", [randomUUID(), session.user_id, data.id, parsed.data.priceId]);
+  return { checkoutUrl: data.url };
+});
+
+app.post("/api/v1/webhooks/stripe", { config: { rawBody: true } }, async (request, reply) => {
+  const raw = (request as FastifyRequest & { rawBody?: Buffer }).rawBody;
+  const signature = request.headers["stripe-signature"];
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!raw || typeof signature !== "string" || !secret || !verifyStripeSignature(raw, signature, secret)) return reply.code(400).send({ error: "invalid_stripe_signature" });
+  let event: { id: string; type: string; data: { object: Record<string, unknown> } };
+  try { event = JSON.parse(raw.toString("utf8")); } catch { return reply.code(400).send({ error: "invalid_event" }); }
+  const object = event.data.object;
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const inserted = await client.query("INSERT INTO stripe_webhook_events(id,event_type) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING id", [event.id, event.type]);
+    if (!inserted.rowCount) { await client.query("COMMIT"); return { received: true, duplicate: true }; }
+    if (event.type === "checkout.session.completed") {
+      const metadata = object.metadata as Record<string, unknown> | undefined;
+      const userId = String(object.client_reference_id ?? metadata?.user_id ?? "");
+      if (userId) await client.query("UPDATE vip_subscriptions SET stripe_customer_id=$1,stripe_subscription_id=$2,status='active',updated_at=now() WHERE stripe_checkout_session_id=$3 AND user_id=$4", [object.customer ?? null, object.subscription ?? null, object.id, userId]);
+    } else if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      const status = event.type === "customer.subscription.deleted" ? "canceled" : String(object.status ?? "unknown");
+      const end = typeof object.current_period_end === "number" ? new Date(object.current_period_end * 1000) : null;
+      await client.query("UPDATE vip_subscriptions SET status=$1,current_period_end=$2,updated_at=now() WHERE stripe_subscription_id=$3", [status, end, object.id]);
+    }
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  return { received: true };
+});
+
+app.get("/api/v1/billing/subscription", async (request, reply) => {
+  const session = await getSession(request);
+  if (!session) return reply.code(401).send({ error: "unauthenticated" });
+  const result = await db.query("SELECT status,current_period_end,price_id,created_at FROM vip_subscriptions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", [session.user_id]);
+  return { subscription: result.rows[0] ?? null };
 });
 
 app.get("/api/v1/admin/overview", async (request, reply) => {
