@@ -1,4 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { access, mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 
 export type IntegrationState = "connected" | "configured" | "missing" | "error";
 
@@ -13,14 +15,28 @@ export type IntegrationStatus = {
 
 const configured = (...keys: string[]) => keys.every(key => Boolean(process.env[key]?.trim()));
 
+async function checkLocalStorage(): Promise<{ state: IntegrationState; detail: string }> {
+  const directory = resolve(process.env.LOCAL_STORAGE_DIR?.trim() || "./storage");
+  try {
+    await mkdir(directory, { recursive: true, mode: 0o750 });
+    await access(directory);
+    return { state: "connected", detail: "Stockage local accessible · " + directory };
+  } catch {
+    return { state: "error", detail: "Dossier local inaccessible · vérifier le chemin et les permissions" };
+  }
+}
+
 export async function getIntegrationStatuses(): Promise<IntegrationStatus[]> {
   const checkedAt = new Date().toISOString();
+  const localStorage = await checkLocalStorage();
+  const iframeHosts = (process.env.IFRAME_ALLOWED_HOSTS ?? "").split(",").map(host => host.trim()).filter(Boolean);
   const checks: IntegrationStatus[] = [
     { id: "discord", label: "Discord OAuth", category: "identity", state: configured("DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET", "DISCORD_REDIRECT_URI") ? "configured" : "missing", detail: "Connexion OAuth et communauté", checkedAt },
     { id: "tmdb", label: "TMDB", category: "metadata", state: configured("TMDB_API_KEY") || configured("TMDB_READ_ACCESS_TOKEN") ? "configured" : "missing", detail: "Recherche et métadonnées films/séries", checkedAt },
     { id: "stripe", label: "Stripe", category: "payments", state: configured("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET") ? "configured" : "missing", detail: "Paiements, abonnements et webhooks", checkedAt },
     { id: "email", label: "Resend", category: "email", state: configured("RESEND_API_KEY", "EMAIL_FROM") ? "configured" : "missing", detail: "E-mails transactionnels", checkedAt },
-    { id: "storage", label: "S3 / Cloudflare R2", category: "storage", state: configured("S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY") ? "configured" : "missing", detail: "Affiches, avatars et fichiers", checkedAt },
+    { id: "storage", label: "Stockage local", category: "storage", state: localStorage.state, detail: localStorage.detail, checkedAt },
+    { id: "iframe", label: "Lecteurs iframe", category: "playback", state: iframeHosts.length ? "configured" : "missing", detail: iframeHosts.length ? iframeHosts.length + " domaine(s) autorisé(s) · contrôle à appliquer aux URLs des lecteurs" : "Aucun domaine de lecteur autorisé", checkedAt },
     { id: "redis", label: "Redis", category: "realtime", state: configured("REDIS_URL") ? "configured" : "missing", detail: "Cache, files de tâches et présence distribuée", checkedAt },
     { id: "sentry", label: "Sentry", category: "observability", state: configured("SENTRY_DSN") ? "configured" : "missing", detail: "Suivi des erreurs et performances", checkedAt },
     { id: "posthog", label: "PostHog", category: "analytics", state: configured("POSTHOG_KEY", "POSTHOG_HOST") ? "configured" : "missing", detail: "Mesure d'audience respectueuse du consentement", checkedAt },
