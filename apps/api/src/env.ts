@@ -7,10 +7,13 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   SESSION_SECRET: z.string().min(32),
   SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
-  SUPER_ADMIN_EMAILS: z.string().default("")
+  SUPER_ADMIN_EMAILS: z.string().default(""),
+  LOCAL_STORAGE_DIR: z.string().min(1).default("./storage"),
+  IFRAME_ALLOWED_HOSTS: z.string().default("")
 });
 
 export const env = schema.parse(process.env);
 export const isProduction = env.NODE_ENV === "production";
 
 export const superAdminEmails = env.SUPER_ADMIN_EMAILS.split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
+export const iframeAllowedHosts = env.IFRAME_ALLOWED_HOSTS.split(",").map(host => host.trim().toLowerCase()).filter(Boolean);
