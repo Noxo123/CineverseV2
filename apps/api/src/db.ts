@@ -1,5 +1,5 @@
 import pg from "pg";
-import { env } from "./env.js";
+import { env, superAdminEmails } from "./env.js";
 
 export const db = new pg.Pool({
   connectionString: env.DATABASE_URL,
@@ -59,6 +59,48 @@ export async function migrate() {
           CREATE INDEX sessions_user_idx ON sessions(user_id);
           INSERT INTO schema_migrations(version) VALUES (1);
         `);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    }
+    const versionTwo = await client.query("SELECT version FROM schema_migrations WHERE version = 2");
+    if (versionTwo.rowCount === 0) {
+      await client.query("BEGIN");
+      try {
+        await client.query(`
+          CREATE TABLE roles (
+            id text PRIMARY KEY,
+            label text NOT NULL,
+            permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
+            is_global boolean NOT NULL DEFAULT false
+          );
+          CREATE TABLE user_roles (
+            user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role_id text NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            assigned_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY(user_id, role_id)
+          );
+          CREATE TABLE audit_logs (
+            id uuid PRIMARY KEY,
+            actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+            action text NOT NULL,
+            target_type text,
+            target_id text,
+            metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          CREATE INDEX audit_logs_created_idx ON audit_logs(created_at DESC);
+          INSERT INTO roles(id,label,permissions,is_global) VALUES
+            ('super_admin','Super administrateur','["*"]'::jsonb,true),
+            ('admin','Administrateur','["dashboard.read","catalog.read","catalog.write","users.read","users.moderate","vip.read","vip.write","ads.read","ads.write","integrations.read","monitoring.read"]'::jsonb,true);
+          INSERT INTO user_roles(user_id,role_id)
+            SELECT id,'super_admin' FROM users
+            WHERE lower(email)=ANY($1::text[])
+            ON CONFLICT DO NOTHING;
+          INSERT INTO schema_migrations(version) VALUES (2);
+        `, [superAdminEmails]);
         await client.query("COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
