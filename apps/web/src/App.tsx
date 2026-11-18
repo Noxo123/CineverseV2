@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, ArrowLeft, ArrowRight, Bell, Check, ChevronDown, CircleHelp,
-  Clapperboard, Clock3, Command, CreditCard, Film, Gauge, Globe2, KeyRound,
-  LayoutDashboard, LifeBuoy, LockKeyhole, LogIn, Mail, Menu, MonitorPlay,
-  MoreHorizontal, Pencil, Play, Plus, Search, Settings, Shield, ShieldCheck,
-  Sparkles, Ticket, Tv, Upload, Users, Video, X, Zap
+  Activity, ArrowLeft, ArrowRight, Check, ChevronDown, Clapperboard,
+  Command, Film, Gauge, Globe2, LayoutDashboard, LockKeyhole, Mail, Menu,
+  Pencil, Play, Plus, Search, Settings, Shield, ShieldCheck, Sparkles,
+  Ticket, Tv, Upload, Users, Video, X, Zap
 } from "lucide-react";
 
 type Screen = "home" | "login" | "register" | "profiles" | "profile-edit" | "catalog";
@@ -83,7 +83,7 @@ function App() {
     notify("Profil enregistré dans cet aperçu.");
   };
 
-  const submitAuth = (event: React.FormEvent<HTMLFormElement>) => {
+  const submitAuth = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     notify("L'interface est prête. Le service sécurisé de compte sera connecté dans le prochain lot.");
   };
