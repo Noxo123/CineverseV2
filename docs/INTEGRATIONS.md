@@ -21,7 +21,7 @@ Ce document distingue les connecteurs réellement implémentés des fournisseurs
 
 ### Stripe — abonnements VIP
 - Variables : `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_IDS` (liste séparée par des virgules), `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`.
-- Création d'une session : `POST /api/v1/billing/checkout` avec un `priceId) autorisé.
+- Création d'une session : `POST /api/v1/billing/checkout` avec un `priceId` autorisé.
 - État membre : `GET /api/v1/billing/subscription`.
 - Webhook : `POST /api/v1/webhooks/stripe`.
 - Événements utilisés : `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`.
