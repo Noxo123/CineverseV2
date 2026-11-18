@@ -95,10 +95,7 @@ app.post("/api/v1/auth/login", { config: { rateLimit: { max: 8, timeWindow: "15 
   if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
   const result = await db.query("SELECT id,email,password_hash FROM users WHERE lower(email)=lower($1)", [parsed.data.email.trim()]);
   const user = result.rows[0];
-  const valid = user ? await argon2.verify(user.password_hash, parsed.data.password) : await argon2.verify(
-    "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$MDEyMzQ1Njc4OWFiY2RlZg",
-    parsed.data.password
-  ).catch(() => false);
+  const valid = await argon2.verify(user?.password_hash ?? dummyPasswordHash, parsed.data.password);
   if (!user || !valid) return reply.code(401).send({ error: "invalid_credentials" });
   const token = randomBytes(32).toString("base64url");
   await db.query(
