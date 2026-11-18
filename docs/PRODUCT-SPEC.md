@@ -51,14 +51,16 @@
 - [ ] Liaison d’un Discord à un compte e-mail existant, vérification/récupération d’e-mail et modèles transactionnels complets.
 - [ ] Présence multi-appareils consolidée, indicateurs « récemment actif » et PIN de profil.
 - [x] Modèle PostgreSQL de catalogue films/séries, import API JSON par lots (100 max), journal d'audit et publication bloquée tant que les droits ne sont pas vérifiés.
-- [ ] Interface d'import catalogue, édition, validation des licences et publication.
+- [x] Interface d'administration : recherche TMDB et import d'un média en brouillon.
+- [ ] Édition complète, validation des licences et publication.
 - [x] Fondations Stripe Checkout en abonnement, liste blanche des Price IDs, vérification de signature des webhooks, idempotence et synchronisation de l’état des abonnements.
 - [ ] Interface de gestion des offres VIP, remboursements, avantages et portail client Stripe.
 - [ ] Gestion des campagnes publicitaires et serveur de diffusion publicitaire.
 - [x] Recherche de métadonnées TMDB côté serveur, statut d’intégrations dans l’administration et test d’envoi e-mail Resend.
 - [x] Registre de configuration pour Discord, TMDB, Stripe, Resend, stockage S3/R2, Redis, Sentry et PostHog ; les fournisseurs non testés sont affichés « configurés » et non « connectés ».
 - [ ] Adaptateurs réels S3/R2 et Redis, instrumentation Sentry/PostHog/OpenTelemetry, alertes et tests de bout en bout.
-- [ ] Tests e2e, sécurité, CI complète et déploiement.
+- [x] Tests unitaires de vérification des signatures Stripe intégrés à la CI.
+- [ ] Tests e2e, tests d'intégration PostgreSQL/OAuth/Stripe, audit sécurité et déploiement.
 
 **Important :** l'interface actuelle est un prototype interactif de présentation. Les indicateurs et contenus visibles sont explicitement des états d'aperçu ; aucune création de compte, transaction, présence réelle ou mesure de latence n'est simulée comme si elle était en production.
 
