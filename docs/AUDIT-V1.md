@@ -235,3 +235,25 @@ L'inspection complémentaire a renforcé les constats sur les migrations, le RBA
 - l'examen de l'historique Git complet et des fichiers supprimés pour détecter d'anciens secrets ou exports ;
 - la vérification des paramètres réels de sauvegarde hors VPS et la répétition d'une restauration sur environnement isolé ;
 - les tests d'intégration et de charge sur une copie isolée.
+
+
+### 9.10 Inventaire statique des routes API
+
+Une extraction statique de `apps/api/src/index.ts` au commit V1 examiné a relevé 132 déclarations de handlers HTTP, dont trois routes CRUD enregistrées dynamiquement. Les principales familles sont :
+
+| Famille | Handlers détectés |
+|---|---:|
+| Administration | 57 |
+| Authentification | 8 |
+| Watch Party | 7 |
+| Compte et profils | 6 |
+| Uploads et lecture locale | 6 |
+| Paiements | 5 |
+| Publicité | 5 |
+| Films / catalogue / TMDB / séries | 8 |
+| Votes et séances | 6 |
+| Activité Discord | 3 |
+| Concours et calendrier | 6 |
+| Autres (santé, thèmes, statistiques, paramètres, serveurs, CRUD générique) | 15 |
+
+Les familles se recoupent dans certains chemins (par exemple administration du catalogue, films et TMDB) ; ces nombres servent à cadrer la revue et ne sont pas une classification fonctionnelle exclusive. L'inventaire ne vaut pas validation de chaque handler. Chaque route de mutation doit encore être testée avec un utilisateur anonyme, un membre, un administrateur local, un administrateur global et un utilisateur explicitement refusé lorsque ces contextes s'appliquent.
