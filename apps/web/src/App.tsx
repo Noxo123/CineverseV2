@@ -117,7 +117,7 @@ function App() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: [{ type: item.type, title: item.title, synopsis: item.synopsis, year: Number.isInteger(year) && year >= 1888 ? year : undefined, posterUrl: item.posterPath ? "https://image.tmdb.org/t/p/w500" + item.posterPath : undefined, tmdbId: item.id }] })
+        body: JSON.stringify({ items: [{ type: item.type, title: item.title, synopsis: item.synopsis, year: typeof year === "number" && Number.isInteger(year) && year >= 1888 ? year : undefined, posterUrl: item.posterPath ? "https://image.tmdb.org/t/p/w500" + item.posterPath : undefined, tmdbId: item.id }] })
       });
       if (!response.ok) throw new Error("Impossible d'importer ce média.");
       notify("Média ajouté en brouillon. Vérifie les droits avant toute publication.");
