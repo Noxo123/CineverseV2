@@ -48,5 +48,6 @@ Prérequis : Node.js 22+, npm 10+ et PostgreSQL.
 L'API crée sa première migration PostgreSQL au démarrage, sous verrou consultatif. Le frontend utilise les endpoints de compte et de profils de l'API. Les autres rubriques d'administration restent des interfaces de travail tant que leurs services et permissions ne sont pas implémentés.
 
 - Spécification fonctionnelle : [docs/PRODUCT-SPEC.md](docs/PRODUCT-SPEC.md)
+- Configuration des intégrations : [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
 - Audit V1 : [docs/AUDIT-V1.md](docs/AUDIT-V1.md)
 - Sécurité et données : [docs/SECURITY-AND-DATA.md](docs/SECURITY-AND-DATA.md)
