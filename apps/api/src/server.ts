@@ -7,7 +7,7 @@ import argon2 from "argon2";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { env, isProduction } from "./env.js";
+import { env, isProduction, superAdminEmails } from "./env.js";
 import { db, migrate } from "./db.js";
 
 const app = Fastify({ logger: true, trustProxy: false, bodyLimit: 1_048_576 });
@@ -74,6 +74,7 @@ app.post("/api/v1/auth/register", { config: { rateLimit: { max: 5, timeWindow: "
     await client.query("BEGIN");
     await client.query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)", [userId, email, passwordHash]);
     await client.query("INSERT INTO profiles(id,account_id,name) VALUES($1,$2,$3)", [profileId, userId, "Principal"]);
+    if (superAdminEmails.includes(email)) await client.query("INSERT INTO user_roles(user_id,role_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [userId, "super_admin"]);
     await client.query(
       "INSERT INTO sessions(id,user_id,token_hash,expires_at,user_agent) VALUES($1,$2,$3,now()+($4 || ' days')::interval,$5)",
       [randomUUID(), userId, hash(token), String(env.SESSION_TTL_DAYS), request.headers["user-agent"]?.slice(0, 500) ?? null]
@@ -196,6 +197,23 @@ app.post("/api/v1/profiles/:profileId/presence", async (request, reply) => {
   );
   if (!result.rowCount) return reply.code(404).send({ error: "profile_not_found" });
   return result.rows[0];
+});
+
+app.get("/api/v1/admin/overview", async (request, reply) => {
+  const session = await getSession(request);
+  if (!session) return reply.code(401).send({ error: "unauthenticated" });
+  const role = await db.query("SELECT role_id FROM user_roles WHERE user_id=$1 AND role_id IN ($2,$3) LIMIT 1", [session.user_id, "super_admin", "admin"]);
+  if (!role.rowCount) return reply.code(403).send({ error: "forbidden" });
+  const started = performance.now();
+  await db.query("SELECT 1");
+  const databaseLatencyMs = Math.round((performance.now() - started) * 100) / 100;
+  const [users, profiles, onlineProfiles, sessions] = await Promise.all([
+    db.query("SELECT count(*)::int AS count FROM users"),
+    db.query("SELECT count(*)::int AS count FROM profiles"),
+    db.query("SELECT count(*)::int AS count FROM profiles WHERE online_until > now()"),
+    db.query("SELECT count(*)::int AS count FROM sessions WHERE revoked_at IS NULL AND expires_at > now()")
+  ]);
+  return { generatedAt: new Date().toISOString(), uptimeSeconds: Math.floor(process.uptime()), database: { status: "connected", latencyMs: databaseLatencyMs }, counts: { users: users.rows[0].count, profiles: profiles.rows[0].count, onlineProfiles: onlineProfiles.rows[0].count, activeSessions: sessions.rows[0].count }, integrations: { discord: Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET), tmdb: Boolean(process.env.TMDB_API_KEY), stripe: Boolean(process.env.STRIPE_SECRET_KEY) } };
 });
 
 await migrate();
