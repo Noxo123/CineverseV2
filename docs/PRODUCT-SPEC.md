@@ -14,12 +14,13 @@
 4. Profils : un profil principal non supprimable et jusqu’à quatre sous-profils (cinq profils au total), nom, avatar, couleur, langue, préférences et indicateur enfant.
 5. Sélection de profil : cartes animées, présence en ligne multi-appareils, dernière activité et verrouillage PIN facultatif.
 6. Catalogue : films, séries, saisons, épisodes, recherche, filtres, fiches, favoris, historique et reprise de lecture.
-7. Lecture : uniquement des fournisseurs et médias dont les droits de diffusion sont vérifiés et enregistrés.
+7. Lecture : lecteur iframe d'un fournisseur autorisé, URL validée côté serveur, intégration cloisonnée et droits de diffusion vérifiés avant publication.
 8. Fonctions communautaires : Watch Parties, invitations, chat modéré, signalements et présence.
 
 ## Administration
 - Vue générale : indicateurs d'activité, état des services, événements récents.
 - Catalogue : import CSV/JSON, recherche TMDB pour métadonnées, édition, publication, archivage et gestion des médias.
+- Lecteurs : URL iframe par contenu, liste blanche des domaines autorisés, contrôle HTTPS et test d'intégration.
 - Droits de diffusion : registre des licences, territoires, fenêtres, dates d'expiration, justificatifs et statut de validation.
 - Membres : recherche, suspension, sessions, signalements, historique de sécurité.
 - VIP : offres, périodes, avantages, renouvellements, remboursements et historique. Les droits sont déterminés par les événements de paiement vérifiés côté serveur.
@@ -57,17 +58,17 @@
 - [ ] Interface de gestion des offres VIP, remboursements, avantages et portail client Stripe.
 - [ ] Gestion des campagnes publicitaires et serveur de diffusion publicitaire.
 - [x] Recherche de métadonnées TMDB côté serveur, statut d’intégrations dans l’administration et test d’envoi e-mail Resend.
-- [x] Registre de configuration pour Discord, TMDB, Stripe, Resend, stockage S3/R2, Redis, Sentry et PostHog ; les fournisseurs non testés sont affichés « configurés » et non « connectés ».
-- [ ] Adaptateurs réels S3/R2 et Redis, instrumentation Sentry/PostHog/OpenTelemetry, alertes et tests de bout en bout.
+- [x] Configuration initiale du stockage local et registre des domaines autorisés pour les lecteurs iframe.
+- [ ] Champs de lecteurs iframe au catalogue, validation effective des URL et player frontend sécurisé.
+- [x] Registre de configuration pour Discord, TMDB, Stripe, Resend, Redis, Sentry et PostHog ; les fournisseurs non testés sont affichés « configurés » et non « connectés ».
 - [x] Tests unitaires de vérification des signatures Stripe intégrés à la CI.
 - [ ] Tests e2e, tests d'intégration PostgreSQL/OAuth/Stripe, audit sécurité et déploiement.
 
 **Important :** l'interface actuelle est un prototype interactif de présentation. Les indicateurs et contenus visibles sont explicitement des états d'aperçu ; aucune création de compte, transaction, présence réelle ou mesure de latence n'est simulée comme si elle était en production.
 
 ## Questions produit à trancher avec le propriétaire
-Les décisions suivantes conditionnent le modèle de données et les parcours :
 1. Connexion : e-mail/mot de passe + Discord OAuth, ou ajouter Google/Apple ?
-2. Profils : le profil principal compte-t-il dans la limite de cinq ? Faut-il un code PIN par profil et des restrictions enfants par âge ?
+2. Profils : un profil principal et quatre sous-profils ; faut-il un code PIN par profil et des restrictions enfants par âge ?
 3. Présence : afficher « en ligne » uniquement pendant l'activité, ou aussi « récemment actif » avec durée configurable ?
 4. VIP : abonnement mensuel/annuel, achat à vie, avantages gratuits, ou plusieurs niveaux ?
 5. Publicités : visibles pour tous, uniquement les comptes gratuits, ou désactivables par option VIP ?
@@ -80,5 +81,5 @@ Les décisions suivantes conditionnent le modèle de données et les parcours :
 - API Fastify, schémas partagés et validation stricte.
 - PostgreSQL recommandé pour la production multi-instance, les sessions, la présence et les opérations concurrentes ; import V1 SQLite réalisé via une migration contrôlée et répétable.
 - Redis pour présence temps réel, rate limiting partagé, pub/sub et tâches différées uniquement si le déploiement multi-instance le nécessite.
-- Stockage objet compatible S3 pour affiches, avatars et médias autorisés.
+- Stockage local sur disque pour les fichiers d'application ; aucun stockage objet cloud requis.
 - OpenTelemetry ou métriques Prometheus pour latence et observabilité.
