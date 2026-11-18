@@ -73,7 +73,7 @@ app.post("/api/v1/auth/register", { config: { rateLimit: { max: 5, timeWindow: "
   try {
     await client.query("BEGIN");
     await client.query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)", [userId, email, passwordHash]);
-    await client.query("INSERT INTO profiles(id,account_id,name) VALUES($1,$2,$3)", [profileId, userId, "Principal"]);
+    await client.query("INSERT INTO profiles(id,account_id,name,is_primary) VALUES($1,$2,$3,true)", [profileId, userId, "Principal"]);
     if (superAdminEmails.includes(email)) await client.query("INSERT INTO user_roles(user_id,role_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [userId, "super_admin"]);
     await client.query(
       "INSERT INTO sessions(id,user_id,token_hash,expires_at,user_agent) VALUES($1,$2,$3,now()+($4 || ' days')::interval,$5)",
@@ -118,7 +118,7 @@ app.get("/api/v1/auth/me", async (request, reply) => {
   const session = await getSession(request);
   if (!session) return reply.code(401).send({ error: "unauthenticated" });
   const profiles = await db.query(
-    "SELECT id,name,avatar_key,is_kids,last_seen_at,(online_until > now()) AS online FROM profiles WHERE account_id=$1 ORDER BY created_at",
+    "SELECT id,name,avatar_key,is_kids,is_primary,last_seen_at,(online_until > now()) AS online FROM profiles WHERE account_id=$1 ORDER BY created_at",
     [session.user_id]
   );
   return { user: { id: session.user_id, email: session.email }, profiles: profiles.rows };
@@ -181,8 +181,12 @@ app.delete("/api/v1/profiles/:profileId", async (request, reply) => {
   if (!session) return reply.code(401).send({ error: "unauthenticated" });
   const profileId = z.string().uuid().safeParse((request.params as { profileId?: string }).profileId);
   if (!profileId.success) return reply.code(400).send({ error: "invalid_profile_id" });
-  const result = await db.query("DELETE FROM profiles WHERE id=$1 AND account_id=$2 RETURNING id", [profileId.data, session.user_id]);
-  if (!result.rowCount) return reply.code(404).send({ error: "profile_not_found" });
+  const result = await db.query("DELETE FROM profiles WHERE id=$1 AND account_id=$2 AND is_primary=false RETURNING id", [profileId.data, session.user_id]);
+  if (!result.rowCount) {
+    const existing = await db.query("SELECT is_primary FROM profiles WHERE id=$1 AND account_id=$2", [profileId.data, session.user_id]);
+    if (existing.rows[0]?.is_primary) return reply.code(409).send({ error: "primary_profile_cannot_be_deleted" });
+    return reply.code(404).send({ error: "profile_not_found" });
+  }
   return reply.code(204).send();
 });
 
