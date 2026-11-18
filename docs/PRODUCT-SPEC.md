@@ -42,8 +42,11 @@
 - [x] Dépôt V2 initialisé et audit V1 documenté.
 - [x] Socle frontend React/Vite/TypeScript ajouté.
 - [x] Première interface animée : accueil, écrans d'authentification, sélection et édition de profils, catalogue d'aperçu, navigation d'administration.
-- [ ] API, persistance, authentification réelle et OAuth.
-- [ ] Présence multi-appareils réelle et profils liés au compte.
+- [x] API Fastify initiale, persistance PostgreSQL, inscription/connexion e-mail et sessions sécurisées.
+- [x] Gestion serveur des cinq profils maximum, édition, suppression et heartbeat de présence.
+- [x] Première protection RBAC de l’administration et endpoint de métriques réelles (comptes, profils, sessions, latence SQL).
+- [ ] OAuth Discord et vérification/récupération d’e-mail.
+- [ ] Présence multi-appareils consolidée, indicateurs « récemment actif » et PIN de profil.
 - [ ] Catalogue persistant et pipeline d'import.
 - [ ] Gestion VIP, publicités et webhooks.
 - [ ] Intégrations réelles et monitoring.
