@@ -54,7 +54,7 @@ export function verifyStripeSignature(rawBody: Buffer, signatureHeader: string, 
   const parts = signatureHeader.split(",").map(part => part.split("=", 2));
   const timestamp = parts.find(([key]) => key === "t")?.[1];
   const signatures = parts.filter(([key]) => key === "v1").map(([, value]) => value);
-  if (!timestamp || !/^\\d+$/.test(timestamp) || !signatures.length) return false;
+  if (!timestamp || /^\d+$/.test(timestamp) || !signatures.length) return false;
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
   const expected = createHmac("sha256", secret).update(timestamp + ".").update(rawBody).digest();
   return signatures.some(candidate => {
