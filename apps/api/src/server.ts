@@ -271,8 +271,8 @@ app.post("/api/v1/admin/catalog/import", async (request, reply) => {
             values
           )
         : await client.query(
-            "INSERT INTO catalog_items(id,content_type,title,synopsis,release_year,poster_url,created_by) VALUES($1,$2,$3,$4,$5,$6,$8) RETURNING id",
-            values
+            "INSERT INTO catalog_items(id,content_type,title,synopsis,release_year,poster_url,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+            [values[0], values[1], values[2], values[3], values[4], values[5], values[7]]
           );
       importedIds.push(result.rows[0].id);
     }
