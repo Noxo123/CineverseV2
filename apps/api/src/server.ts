@@ -4,7 +4,8 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import argon2 from "argon2";
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env, isProduction } from "./env.js";
 import { db, migrate } from "./db.js";
@@ -12,7 +13,8 @@ import { db, migrate } from "./db.js";
 const app = Fastify({ logger: true, trustProxy: false, bodyLimit: 1_048_576 });
 const cookieName = isProduction ? "__Host-cineverse_session" : "cineverse_session";
 const sessionMs = env.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
-const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+const hash = (value: string) => createHmac("sha256", env.SESSION_SECRET).update(value).digest("hex");
+const dummyPasswordHash = await argon2.hash(randomBytes(32).toString("hex"), { type: argon2.argon2id });
 const sessionCookie = {
   path: "/",
   httpOnly: true,
@@ -26,6 +28,12 @@ await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });
 await app.register(cookie);
 await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
 
+app.addHook("onRequest", async (request, reply) => {
+  if (request.method === "OPTIONS" || request.url.startsWith("/health/")) return;
+  const origin = request.headers.origin;
+  if (origin && origin !== env.WEB_ORIGIN) return reply.code(403).send({ error: "origin_not_allowed" });
+});
+
 app.get("/health/live", async () => ({ status: "ok" }));
 app.get("/health/ready", async (_request, reply) => {
   try {
@@ -36,7 +44,7 @@ app.get("/health/ready", async (_request, reply) => {
   }
 });
 
-async function getSession(request: typeof app extends never ? never : import("fastify").FastifyRequest) {
+async function getSession(request: FastifyRequest) {
   const token = request.cookies[cookieName];
   if (!token || token.length > 256) return null;
   const result = await db.query(
@@ -191,12 +199,6 @@ app.post("/api/v1/profiles/:profileId/presence", async (request, reply) => {
   );
   if (!result.rowCount) return reply.code(404).send({ error: "profile_not_found" });
   return result.rows[0];
-});
-
-app.addHook("onRequest", async (request, reply) => {
-  if (request.method === "OPTIONS" || request.url.startsWith("/health/")) return;
-  const origin = request.headers.origin;
-  if (origin && origin !== env.WEB_ORIGIN) return reply.code(403).send({ error: "origin_not_allowed" });
 });
 
 await migrate();
