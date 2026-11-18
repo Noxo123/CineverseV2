@@ -11,7 +11,8 @@
     "dev": "npm run dev --workspace @cineverse/web",
     "build": "npm run build --workspace @cineverse/api && npm run build --workspace @cineverse/web",
     "typecheck": "npm run typecheck --workspace @cineverse/api && npm run typecheck --workspace @cineverse/web",
-    "dev:api": "npm run dev --workspace @cineverse/api"
+    "dev:api": "npm run dev --workspace @cineverse/api",
+    "test": "npm run test --workspace @cineverse/api"
   },
   "engines": {
     "node": ">=22.0.0",
