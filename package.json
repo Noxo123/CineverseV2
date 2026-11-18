@@ -1,0 +1,13 @@
+{
+  "name": "cineverse-v2",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace @cineverse/web",
+    "build": "npm run build --workspace @cineverse/web",
+    "typecheck": "npm run typecheck --workspace @cineverse/web"
+  },
+  "engines": { "node": ">=22.0.0", "npm": ">=10.0.0" }
+}
