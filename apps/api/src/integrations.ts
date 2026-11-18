@@ -31,8 +31,10 @@ export async function getIntegrationStatuses(): Promise<IntegrationStatus[]> {
   const tmdbApiKey = process.env.TMDB_API_KEY;
   if (tmdbKey || tmdbApiKey) {
     try {
-      const response = await fetch("https://api.themoviedb.org/3/configuration", {
-        headers: tmdbKey ? { Authorization: "Bearer " + tmdbKey, accept: "application/json" } : { accept: "application/json" , "x-api-key": tmdbApiKey! },
+      const tmdbUrl = new URL("https://api.themoviedb.org/3/configuration");
+      if (!tmdbKey && tmdbApiKey) tmdbUrl.searchParams.set("api_key", tmdbApiKey);
+      const response = await fetch(tmdbUrl, {
+        headers: tmdbKey ? { Authorization: "Bearer " + tmdbKey, accept: "application/json" } : { accept: "application/json" },
         signal: AbortSignal.timeout(5000)
       });
       const item = checks.find(x => x.id === "tmdb")!;
