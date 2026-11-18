@@ -47,7 +47,8 @@
 - [x] Première protection RBAC de l’administration et endpoint de métriques réelles (comptes, profils, sessions, latence SQL).
 - [ ] OAuth Discord et vérification/récupération d’e-mail.
 - [ ] Présence multi-appareils consolidée, indicateurs « récemment actif » et PIN de profil.
-- [ ] Catalogue persistant et pipeline d'import.
+- [x] Modèle PostgreSQL de catalogue films/séries, import API JSON par lots (100 max), journal d'audit et publication bloquée tant que les droits ne sont pas vérifiés.
+- [ ] Interface d'import catalogue, édition, validation des licences et publication.
 - [ ] Gestion VIP, publicités et webhooks.
 - [ ] Intégrations réelles et monitoring.
 - [ ] Tests e2e, sécurité, CI complète et déploiement.
