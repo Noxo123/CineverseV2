@@ -51,3 +51,7 @@ L'API crée sa première migration PostgreSQL au démarrage, sous verrou consult
 - Configuration des intégrations : [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
 - Audit V1 : [docs/AUDIT-V1.md](docs/AUDIT-V1.md)
 - Sécurité et données : [docs/SECURITY-AND-DATA.md](docs/SECURITY-AND-DATA.md)
+
+## Database compatibility with Cineverse V1
+
+V2 PostgreSQL now includes the isolated legacy Discord cinema schema (migration 6). Details and migration limitations: [`docs/database-merge-v1-v2.md`](docs/database-merge-v1-v2.md). This merges the schema, not the SQLite records; a data import requires the original SQLite database file and a validated mapping.
