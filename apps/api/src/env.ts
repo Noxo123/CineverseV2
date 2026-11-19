@@ -1,4 +1,10 @@
+import dotenv from "dotenv";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+// Always load the repository-root .env, regardless of npm workspace cwd.
+dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env") });
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -11,9 +17,7 @@ const schema = z.object({
   LOCAL_STORAGE_DIR: z.string().min(1).default("./storage"),
   IFRAME_ALLOWED_HOSTS: z.string().default("")
 });
-
 export const env = schema.parse(process.env);
 export const isProduction = env.NODE_ENV === "production";
-
 export const superAdminEmails = env.SUPER_ADMIN_EMAILS.split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
 export const iframeAllowedHosts = env.IFRAME_ALLOWED_HOSTS.split(",").map(host => host.trim().toLowerCase()).filter(Boolean);
